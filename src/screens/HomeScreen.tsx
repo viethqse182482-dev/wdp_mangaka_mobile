@@ -18,8 +18,8 @@ import { StoryHorizontalCard } from '../components/home/StoryHorizontalCard';
 import { BottomTabBar } from '../components/home/BottomTabBar';
 import { AccountDrawer } from '../components/home/AccountDrawer';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
-import { getStoryById, hotStories, latestStories, topWeekStories } from '../data/mockStories';
-import { recordReadingHistory } from '../services/readingHistoryService';
+import { useStoryNavigation } from '../hooks/useStoryNavigation';
+import { hotStories, latestStories, topWeekStories } from '../data/mockStories';
 import { Story } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 
@@ -31,20 +31,18 @@ const GRID_ITEM_WIDTH =
 
 export function HomeScreen() {
   const router = useRouter();
+  const { openStory, loginPromptModal } = useStoryNavigation();
   const {
     handleTabPress,
     accountDrawerVisible,
     setAccountDrawerVisible,
     handleAccountMenuPress,
+    loginPromptModal: tabLoginPromptModal,
   } = useMainTabNavigation('home');
 
   const handlePressStory = useCallback((storyId: string) => {
-    const story = getStoryById(storyId);
-    if (story) {
-      void recordReadingHistory(story);
-    }
-    router.push(`/story/${storyId}`);
-  }, [router]);
+    void openStory(storyId);
+  }, [openStory]);
 
   const handleSearchPress = useCallback(() => {
     // TODO: router.push('/search')
@@ -152,6 +150,9 @@ export function HomeScreen() {
         onClose={() => setAccountDrawerVisible(false)}
         onMenuPress={handleAccountMenuPress}
       />
+
+      {loginPromptModal}
+      {tabLoginPromptModal}
     </SafeAreaView>
   );
 }

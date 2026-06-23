@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../theme/colors';
+import { getAuthUser } from '../../services/authService';
+import { AuthUser } from '../../types/auth';
 
 type MenuIcon = keyof typeof Ionicons.glyphMap;
 
@@ -13,8 +15,8 @@ interface MenuItem {
   showChevron?: boolean;
 }
 
-const USER_INFO_ITEMS: MenuItem[] = [
-  { key: 'username', label: 'quảng viet', icon: 'person-outline' },
+const USER_INFO_TEMPLATE: MenuItem[] = [
+  { key: 'username', label: 'Đăng nhập', icon: 'person-outline' },
   { key: 'level', label: 'Cấp Độ: 2', icon: 'ribbon-outline' },
   { key: 'notifications', label: 'Thông Báo', icon: 'mail-outline' },
 ];
@@ -39,6 +41,12 @@ const LOGOUT_ITEM: MenuItem = {
   key: 'logout',
   label: 'Đăng Xuất',
   icon: 'log-out-outline',
+};
+
+const LOGIN_ITEM: MenuItem = {
+  key: 'login',
+  label: 'Đăng Nhập',
+  icon: 'log-in-outline',
 };
 
 interface AccountDrawerProps {
@@ -120,14 +128,31 @@ function AccountFeaturesSection({
 export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerProps) {
   const insets = useSafeAreaInsets();
   const [drawerSession, setDrawerSession] = useState(0);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     if (visible) {
       setDrawerSession((prev) => prev + 1);
+      void getAuthUser().then(setAuthUser);
     }
   }, [visible]);
 
+  const userInfoItems = USER_INFO_TEMPLATE.map((item) =>
+    item.key === 'username'
+      ? {
+          ...item,
+          label: authUser?.fullName || authUser?.username || 'Đăng nhập',
+        }
+      : item,
+  );
+
   const handleMenuPress = (key: string) => {
+    if (key === 'username' && !authUser) {
+      onClose();
+      onMenuPress?.('login');
+      return;
+    }
+
     onMenuPress?.(key);
     if (key === 'home') {
       onClose();
@@ -157,7 +182,7 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.section}>
-              {USER_INFO_ITEMS.map((item) => (
+              {userInfoItems.map((item) => (
                 <MenuRow key={item.key} item={item} onPress={handleMenuPress} />
               ))}
             </View>
@@ -179,7 +204,10 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
             <View style={styles.divider} />
 
             <View style={styles.section}>
-              <MenuRow item={LOGOUT_ITEM} onPress={handleMenuPress} />
+              <MenuRow
+                item={authUser ? LOGOUT_ITEM : LOGIN_ITEM}
+                onPress={handleMenuPress}
+              />
             </View>
           </ScrollView>
         </View>

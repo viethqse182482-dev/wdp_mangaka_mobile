@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
 import { ChapterList } from '../components/story/ChapterList';
 import { CommentSection } from '../components/story/CommentSection';
 import { StoryActionBar } from '../components/story/StoryActionBar';
@@ -20,6 +21,7 @@ import { StoryOverview } from '../components/story/StoryOverview';
 import { StoryRatingRow, StoryStatsBar } from '../components/story/StoryStatsBar';
 import { getStoryDetailById } from '../data/mockStoryDetails';
 import { getStoryById } from '../data/mockStories';
+import { getAuthToken } from '../services/authService';
 import { recordReadingHistory } from '../services/readingHistoryService';
 import { Chapter } from '../types/storyDetail';
 import { colors, spacing } from '../theme/colors';
@@ -29,11 +31,43 @@ export function StoryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const [showTopFab, setShowTopFab] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const story = typeof id === 'string' ? getStoryDetailById(id) : undefined;
 
-  const handleBack = useCallback(() => {
-    router.back();
+  useEffect(() => {
+    let mounted = true;
+
+    getAuthToken().then((token) => {
+      if (!mounted) return;
+
+      if (!token) {
+        setShowLoginModal(true);
+        return;
+      }
+
+      setAuthChecked(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, router]);
+
+  const handleLoginFromModal = useCallback(() => {
+    const redirectPath = typeof id === 'string' ? `/story/${id}` : '/';
+    setShowLoginModal(false);
+    router.push(`/login?redirect=${encodeURIComponent(redirectPath)}`);
+  }, [id, router]);
+
+  const handleCloseLoginModal = useCallback(() => {
+    setShowLoginModal(false);
+    router.replace('/');
+  }, [router]);
+
+  const handleBackHome = useCallback(() => {
+    router.replace('/');
   }, [router]);
 
   const handleReadFromStart = useCallback(() => {
@@ -65,13 +99,30 @@ export function StoryDetailScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, []);
 
+  if (!authChecked) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <LoginRequiredModal
+          visible={showLoginModal}
+          onClose={handleCloseLoginModal}
+          onLogin={handleLoginFromModal}
+        />
+        {!showLoginModal ? (
+          <View style={styles.centered}>
+            <Text style={styles.loadingText}>Đang kiểm tra đăng nhập...</Text>
+          </View>
+        ) : null}
+      </SafeAreaView>
+    );
+  }
+
   if (!story) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.notFound}>
           <Text style={styles.notFoundTitle}>Không tìm thấy truyện</Text>
-          <Pressable onPress={handleBack} style={styles.backLink}>
-            <Text style={styles.backLinkText}>Quay lại</Text>
+          <Pressable onPress={handleBackHome} style={styles.backLink}>
+            <Text style={styles.backLinkText}>Về trang chủ</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -83,13 +134,17 @@ export function StoryDetailScreen() {
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
       <View style={styles.topBar}>
-        <Pressable onPress={handleBack} hitSlop={8} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+        <Pressable
+          onPress={handleBackHome}
+          hitSlop={8}
+          style={({ pressed }) => [styles.backHomeButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+          <Text style={styles.backHomeText}>Trang chủ</Text>
         </Pressable>
         <Text style={styles.topBarTitle} numberOfLines={1}>
           {story.title}
         </Text>
-        <View style={styles.backButton} />
       </View>
 
       <ScrollView
@@ -129,22 +184,44 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  backHomeButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 20,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    flexShrink: 0,
+  },
+  backHomeText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   topBarTitle: {
     flex: 1,
     color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'center',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  pressed: {
+    opacity: 0.75,
   },
   scrollContent: {
     paddingBottom: spacing.xxl,

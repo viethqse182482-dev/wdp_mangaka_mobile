@@ -29,6 +29,7 @@ export function GenresScreen() {
     accountDrawerVisible,
     setAccountDrawerVisible,
     handleAccountMenuPress,
+    loginPromptModal,
   } = useMainTabNavigation('genres');
 
   const loadGenres = useCallback(async () => {
@@ -108,6 +109,8 @@ export function GenresScreen() {
         onClose={() => setAccountDrawerVisible(false)}
         onMenuPress={handleAccountMenuPress}
       />
+
+      {loginPromptModal}
     </SafeAreaView>
   );
 }

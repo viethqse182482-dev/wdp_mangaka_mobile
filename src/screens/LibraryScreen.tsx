@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,6 +16,7 @@ import { AccountDrawer } from '../components/home/AccountDrawer';
 import { BottomTabBar } from '../components/home/BottomTabBar';
 import { LibraryStoryRow } from '../components/library/LibraryStoryRow';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
+import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import {
   FollowedStory,
   getFollowedStories,
@@ -24,7 +25,7 @@ import {
 import { colors, spacing } from '../theme/colors';
 
 export function LibraryScreen() {
-  const router = useRouter();
+  const { openStory, loginPromptModal } = useStoryNavigation();
   const [stories, setStories] = useState<FollowedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,6 +35,7 @@ export function LibraryScreen() {
     accountDrawerVisible,
     setAccountDrawerVisible,
     handleAccountMenuPress,
+    loginPromptModal: tabLoginPromptModal,
   } = useMainTabNavigation('library');
 
   const loadStories = useCallback(async (isRefresh = false) => {
@@ -59,8 +61,8 @@ export function LibraryScreen() {
   );
 
   const handleStoryPress = useCallback((storyId: string) => {
-    router.push(`/story/${storyId}`);
-  }, [router]);
+    void openStory(storyId);
+  }, [openStory]);
 
   const handleUnfollow = useCallback(async (storyId: string) => {
     await unfollowStory(storyId);
@@ -141,6 +143,9 @@ export function LibraryScreen() {
         onClose={() => setAccountDrawerVisible(false)}
         onMenuPress={handleAccountMenuPress}
       />
+
+      {loginPromptModal}
+      {tabLoginPromptModal}
     </SafeAreaView>
   );
 }

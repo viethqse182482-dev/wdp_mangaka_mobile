@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HistoryStoryRow } from '../components/history/HistoryStoryRow';
+import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import {
   ReadingHistoryEntry,
   clearReadingHistory,
@@ -25,6 +26,7 @@ import { colors, spacing } from '../theme/colors';
 
 export function ReadingHistoryScreen() {
   const router = useRouter();
+  const { openStory, loginPromptModal } = useStoryNavigation();
   const [entries, setEntries] = useState<ReadingHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,8 +74,8 @@ export function ReadingHistoryScreen() {
   }, [entries.length]);
 
   const handleStoryPress = useCallback((storyId: string) => {
-    router.push(`/story/${storyId}`);
-  }, [router]);
+    void openStory(storyId);
+  }, [openStory]);
 
   const handleRemove = useCallback(async (storyId: string) => {
     await removeHistoryEntry(storyId);
@@ -171,6 +173,8 @@ export function ReadingHistoryScreen() {
           }
         />
       )}
+
+      {loginPromptModal}
     </SafeAreaView>
   );
 }
