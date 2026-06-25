@@ -1,4 +1,4 @@
-import { Story } from '../types/story';
+import { FeaturedStory, Story } from '../types/story';
 import { Chapter, StoryComment, StoryDetail } from '../types/storyDetail';
 import { mockStories } from './mockStories';
 
@@ -101,3 +101,22 @@ export function getStoryDetailById(id: string): StoryDetail | undefined {
   detailCache.set(id, detail);
   return detail;
 }
+
+function toFeaturedStory(detail: StoryDetail): FeaturedStory {
+  return {
+    id: detail.id,
+    title: detail.title,
+    coverUrl: detail.coverUrl,
+    latestChapter: detail.latestChapter,
+    updatedAt: detail.updatedAt,
+    views: detail.views,
+    genres: detail.genres,
+    synopsis: detail.synopsis,
+    rating: detail.rating,
+    followers: detail.followers,
+  };
+}
+
+export const newStories: FeaturedStory[] = mockStories.map((story) =>
+  toFeaturedStory(buildDetail(story)),
+);

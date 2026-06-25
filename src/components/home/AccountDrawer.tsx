@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../theme/colors';
 import { getAuthUser } from '../../services/authService';
@@ -24,17 +24,14 @@ const USER_INFO_TEMPLATE: MenuItem[] = [
 const ACCOUNT_FEATURE_ITEMS: MenuItem[] = [
   { key: 'change-display-name', label: 'Đổi Tên Hiển Thị', icon: 'create-outline' },
   { key: 'request-upgrade', label: 'Yêu Cầu Thăng Cấp', icon: 'construct-outline' },
-  { key: 'sync-device-data', label: 'Đồng Bộ Dữ Liệu Thiết Bị', icon: 'sync-outline' },
-  { key: 'disable-ads', label: 'Tắt Quảng Cáo', icon: 'megaphone-outline' },
 ];
 
 const NAV_ITEMS: MenuItem[] = [
   { key: 'home', label: 'Trang Chủ', icon: 'home-outline' },
   { key: 'following', label: 'Truyện Theo Dõi', icon: 'walk-outline' },
   { key: 'history', label: 'Truyện Đã Đọc', icon: 'time-outline' },
-  { key: 'list', label: 'Danh Sách', icon: 'list-outline' },
+  { key: 'genres', label: 'Thể Loại', icon: 'list-outline' },
   { key: 'contact', label: 'Liên Hệ', icon: 'chatbox-ellipses-outline' },
-  { key: 'theme', label: 'Chuyển Đổi Giao Diện', icon: 'swap-horizontal-outline' },
 ];
 
 const LOGOUT_ITEM: MenuItem = {
@@ -129,13 +126,22 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
   const insets = useSafeAreaInsets();
   const [drawerSession, setDrawerSession] = useState(0);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [displayNameModalVisible, setDisplayNameModalVisible] = useState(false);
+  const [displayName, setDisplayName] = useState('');
 
   useEffect(() => {
     if (visible) {
       setDrawerSession((prev) => prev + 1);
       void getAuthUser().then(setAuthUser);
+    } else {
+      setDisplayNameModalVisible(false);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setDisplayName(authUser?.fullName || authUser?.username || '');
+  }, [authUser, visible]);
 
   const userInfoItems = USER_INFO_TEMPLATE.map((item) =>
     item.key === 'username'
@@ -147,6 +153,11 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
   );
 
   const handleMenuPress = (key: string) => {
+    if (key === 'change-display-name') {
+      setDisplayNameModalVisible(true);
+      return;
+    }
+
     if (key === 'username' && !authUser) {
       onClose();
       onMenuPress?.('login');
@@ -211,6 +222,64 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
             </View>
           </ScrollView>
         </View>
+
+        <Modal
+          visible={displayNameModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDisplayNameModalVisible(false)}
+        >
+          <View style={styles.dialogOverlay}>
+            <Pressable style={styles.dialogBackdrop} onPress={() => setDisplayNameModalVisible(false)} />
+
+            <View style={styles.dialogPanel}>
+              <View style={styles.dialogHeader}>
+                <Text style={styles.dialogTitle}>Đổi Tên Hiển Thị</Text>
+                <Pressable
+                  onPress={() => setDisplayNameModalVisible(false)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.dialogCloseButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="close" size={24} color={colors.textPrimary} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.dialogRule}>- Chức năng này chỉ dùng cho tài khoản cấp 2+</Text>
+              <Text style={styles.dialogRule}>- Một ngày chỉ được đổi một lần</Text>
+              <Text style={styles.dialogRule}>
+                - Tên và Danh hiệu không được chứa ký tự nhạy cảm, nếu vi phạm sẽ bị khóa chức năng
+              </Text>
+              <Text style={styles.dialogRule}>- Số ký tự giới hạn là 30</Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Tên Hiển Thị</Text>
+                <TextInput
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  maxLength={30}
+                  style={styles.dialogInput}
+                  placeholder="Nhập tên hiển thị"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
+              <View style={styles.dialogActions}>
+                <Pressable
+                  style={({ pressed }) => [styles.dialogButton, pressed && styles.pressed]}
+                  onPress={() => setDisplayNameModalVisible(false)}
+                >
+                  <Text style={styles.dialogButtonText}>THAY ĐỔI</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.dialogButton, pressed && styles.pressed]}
+                  onPress={() => setDisplayNameModalVisible(false)}
+                >
+                  <Text style={styles.dialogButtonText}>HỦY</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </Modal>
   );
@@ -314,5 +383,92 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  dialogOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
+  dialogBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  dialogPanel: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  dialogHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  dialogTitle: {
+    color: colors.textPrimary,
+    fontSize: 38 / 2,
+    fontWeight: '700',
+  },
+  dialogCloseButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogRule: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 23,
+    marginBottom: spacing.xs,
+  },
+  inputGroup: {
+    marginTop: spacing.sm,
+  },
+  inputLabel: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  dialogInput: {
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    paddingHorizontal: spacing.md,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  dialogButton: {
+    minWidth: 98,
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  dialogButtonText: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 });
