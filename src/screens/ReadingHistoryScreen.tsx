@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,12 +24,15 @@ import {
 } from '../services/readingHistoryService';
 import { colors, spacing } from '../theme/colors';
 
+const HISTORY_PAGE_SIZE = 10;
+
 export function ReadingHistoryScreen() {
   const router = useRouter();
   const { openStory, loginPromptModal } = useStoryNavigation();
   const [entries, setEntries] = useState<ReadingHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
 
   const loadHistory = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -41,6 +44,7 @@ export function ReadingHistoryScreen() {
     try {
       const data = await getReadingHistory();
       setEntries(data);
+      setPage(1);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -90,6 +94,16 @@ export function ReadingHistoryScreen() {
   );
 
   const renderSeparator = useCallback(() => <View style={styles.separator} />, []);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(entries.length / HISTORY_PAGE_SIZE)),
+    [entries.length],
+  );
+
+  const pagedEntries = useMemo(
+    () => entries.slice((page - 1) * HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE),
+    [entries, page],
+  );
 
   const renderEmpty = useCallback(() => {
     if (loading) return null;
@@ -153,7 +167,7 @@ export function ReadingHistoryScreen() {
         </View>
       ) : (
         <FlatList
-          data={entries}
+          data={pagedEntries}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           ItemSeparatorComponent={renderSeparator}
@@ -173,6 +187,41 @@ export function ReadingHistoryScreen() {
           }
         />
       )}
+
+      {!loading && entries.length > 0 ? (
+        <View style={styles.paginationRow}>
+          <Pressable
+            onPress={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={page === 1}
+            style={({ pressed }) => [
+              styles.pageArrowButton,
+              page === 1 && styles.pageArrowDisabled,
+              pressed && page > 1 && styles.pressed,
+            ]}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color={page === 1 ? colors.textMuted : colors.textPrimary}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => setPage((current) => Math.min(totalPages, current + 1))}
+            disabled={page === totalPages}
+            style={({ pressed }) => [
+              styles.pageArrowButton,
+              page === totalPages && styles.pageArrowDisabled,
+              pressed && page < totalPages && styles.pressed,
+            ]}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={page === totalPages ? colors.textMuted : colors.textPrimary}
+            />
+          </Pressable>
+        </View>
+      ) : null}
 
       {loginPromptModal}
     </SafeAreaView>
@@ -272,5 +321,25 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  pageArrowButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageArrowDisabled: {
+    opacity: 0.5,
   },
 });

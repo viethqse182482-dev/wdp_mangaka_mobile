@@ -8,4 +8,10 @@ export interface Story {
   genres: string[];
 }
 
+export interface FeaturedStory extends Story {
+  synopsis: string;
+  rating: number;
+  followers: number;
+}
+
 export type BottomTabKey = 'home' | 'genres' | 'library' | 'profile';

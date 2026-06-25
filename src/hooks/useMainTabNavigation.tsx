@@ -88,6 +88,24 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
       return;
     }
 
+    if (key === 'following') {
+      setAccountDrawerVisible(false);
+      router.push('/library');
+      return;
+    }
+
+    if (key === 'contact') {
+      setAccountDrawerVisible(false);
+      router.push('/contact');
+      return;
+    }
+
+    if (key === 'genres') {
+      setAccountDrawerVisible(false);
+      router.push('/genres');
+      return;
+    }
+
     console.log('[Navigation] Menu tài khoản:', key);
     if (key === 'logout') {
       void clearAuthSession();

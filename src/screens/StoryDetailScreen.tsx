@@ -22,7 +22,9 @@ import { StoryRatingRow, StoryStatsBar } from '../components/story/StoryStatsBar
 import { getStoryDetailById } from '../data/mockStoryDetails';
 import { getStoryById } from '../data/mockStories';
 import { getAuthToken } from '../services/authService';
+import { fetchMangaDexStoryDetail } from '../services/mangaDexService';
 import { recordReadingHistory } from '../services/readingHistoryService';
+import { StoryDetail } from '../types/storyDetail';
 import { Chapter } from '../types/storyDetail';
 import { colors, spacing } from '../theme/colors';
 
@@ -33,8 +35,16 @@ export function StoryDetailScreen() {
   const [showTopFab, setShowTopFab] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [mangaDexStory, setMangaDexStory] = useState<StoryDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState(false);
 
-  const story = typeof id === 'string' ? getStoryDetailById(id) : undefined;
+  const isMangaDexStory = typeof id === 'string' && id.startsWith('mdx-');
+  const story = isMangaDexStory
+    ? mangaDexStory ?? undefined
+    : typeof id === 'string'
+      ? getStoryDetailById(id)
+      : undefined;
 
   useEffect(() => {
     let mounted = true;
@@ -54,6 +64,37 @@ export function StoryDetailScreen() {
       mounted = false;
     };
   }, [id, router]);
+
+  useEffect(() => {
+    if (!isMangaDexStory || typeof id !== 'string') {
+      setMangaDexStory(null);
+      setDetailError(false);
+      setLoadingDetail(false);
+      return;
+    }
+
+    let mounted = true;
+    setLoadingDetail(true);
+    setDetailError(false);
+
+    fetchMangaDexStoryDetail(id)
+      .then((detail) => {
+        if (!mounted) return;
+        setMangaDexStory(detail);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDetailError(true);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setLoadingDetail(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, isMangaDexStory]);
 
   const handleLoginFromModal = useCallback(() => {
     const redirectPath = typeof id === 'string' ? `/story/${id}` : '/';
@@ -112,6 +153,29 @@ export function StoryDetailScreen() {
             <Text style={styles.loadingText}>Đang kiểm tra đăng nhập...</Text>
           </View>
         ) : null}
+      </SafeAreaView>
+    );
+  }
+
+  if (loadingDetail) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.centered}>
+          <Text style={styles.loadingText}>Đang tải chi tiết truyện...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (detailError) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.notFound}>
+          <Text style={styles.notFoundTitle}>Không tải được chi tiết truyện</Text>
+          <Pressable onPress={handleBackHome} style={styles.backLink}>
+            <Text style={styles.backLinkText}>Về trang chủ</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
