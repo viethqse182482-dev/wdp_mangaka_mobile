@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   ListRenderItem,
   RefreshControl,
@@ -18,17 +19,18 @@ import { LibraryStoryRow } from '../components/library/LibraryStoryRow';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
 import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import {
-  FollowedStory,
-  getFollowedStories,
-  unfollowStory,
-} from '../services/followService';
+  BookshelfItem,
+  fetchBookshelf,
+  removeFromBookshelf,
+} from '../services/bookshelfService';
 import { colors, spacing } from '../theme/colors';
 
 export function LibraryScreen() {
   const { openStory, loginPromptModal } = useStoryNavigation();
-  const [stories, setStories] = useState<FollowedStory[]>([]);
+  const [items, setItems] = useState<BookshelfItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     handleTabPress,
@@ -38,16 +40,24 @@ export function LibraryScreen() {
     loginPromptModal: tabLoginPromptModal,
   } = useMainTabNavigation('library');
 
-  const loadStories = useCallback(async (isRefresh = false) => {
+  const loadItems = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
+    setError(null);
 
     try {
-      const data = await getFollowedStories();
-      setStories(data);
+      const response = await fetchBookshelf(1, 100);
+      setItems(response.data ?? []);
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
+      if (errMessage === 'UNAUTHENTICATED') {
+        setItems([]);
+      } else {
+        setError(errMessage);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -56,24 +66,35 @@ export function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadStories();
-    }, [loadStories]),
+      loadItems();
+    }, [loadItems]),
   );
 
-  const handleStoryPress = useCallback((storyId: string) => {
-    void openStory(storyId);
+  const handleStoryPress = useCallback((seriesId: string) => {
+    void openStory(seriesId);
   }, [openStory]);
 
-  const handleUnfollow = useCallback(async (storyId: string) => {
-    await unfollowStory(storyId);
-    setStories((current) => current.filter((story) => story.id !== storyId));
+  const handleRemove = useCallback(async (seriesId: string) => {
+    try {
+      await removeFromBookshelf(seriesId);
+      setItems((current) =>
+        current.filter((item) => item.series._id !== seriesId),
+      );
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
+      if (errMessage === 'UNAUTHENTICATED') {
+        Alert.alert('Phiên đăng nhập hết hạn', 'Vui lòng đăng nhập lại.');
+      } else {
+        Alert.alert('Không thể xóa khỏi tủ sách', errMessage);
+      }
+    }
   }, []);
 
-  const renderItem: ListRenderItem<FollowedStory> = useCallback(
+  const renderItem: ListRenderItem<BookshelfItem> = useCallback(
     ({ item }) => (
-      <LibraryStoryRow story={item} onPress={handleStoryPress} onUnfollow={handleUnfollow} />
+      <LibraryStoryRow story={item} onPress={handleStoryPress} onRemove={handleRemove} />
     ),
-    [handleStoryPress, handleUnfollow],
+    [handleStoryPress, handleRemove],
   );
 
   const renderSeparator = useCallback(
@@ -84,6 +105,18 @@ export function LibraryScreen() {
   const renderEmpty = useCallback(() => {
     if (loading) return null;
 
+    if (error) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
+          </View>
+          <Text style={styles.emptyTitle}>Không tải được tủ sách</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyIcon}>
@@ -91,11 +124,11 @@ export function LibraryScreen() {
         </View>
         <Text style={styles.emptyTitle}>Tủ sách trống</Text>
         <Text style={styles.emptySubtitle}>
-          Nhấn biểu tượng bookmark trên truyện để theo dõi và xem lại tại đây.
+          Nhấn nút "Lưu vào tủ sách" trên truyện để theo dõi và xem lại tại đây.
         </Text>
       </View>
     );
-  }, [loading]);
+  }, [loading, error]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -103,9 +136,9 @@ export function LibraryScreen() {
 
       <View style={styles.header}>
         <Text style={styles.title}>Tủ sách</Text>
-        <Text style={styles.subtitle}>Truyện bạn đang theo dõi</Text>
-        {!loading && stories.length > 0 ? (
-          <Text style={styles.count}>{stories.length} truyện</Text>
+        <Text style={styles.subtitle}>Truyện bạn đã lưu</Text>
+        {!loading && items.length > 0 ? (
+          <Text style={styles.count}>{items.length} truyện</Text>
         ) : null}
       </View>
 
@@ -115,20 +148,20 @@ export function LibraryScreen() {
         </View>
       ) : (
         <FlatList
-          data={stories}
-          keyExtractor={(item) => item.id}
+          data={items}
+          keyExtractor={(item) => item._id}
           renderItem={renderItem}
           ItemSeparatorComponent={renderSeparator}
           ListEmptyComponent={renderEmpty}
           contentContainerStyle={[
             styles.listContent,
-            stories.length === 0 && styles.listContentEmpty,
+            items.length === 0 && styles.listContentEmpty,
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => loadStories(true)}
+              onRefresh={() => loadItems(true)}
               tintColor={colors.accent}
               colors={[colors.accent]}
             />

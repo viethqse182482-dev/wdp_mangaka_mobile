@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { fetchFeaturedStoriesFromMangaDex, searchMangaDexStories } from '../services/mangaDexService';
+import { fetchSeriesByTab } from '../services/seriesService';
 import { FeaturedStory } from '../types/story';
 import { formatCompactNumber } from '../utils/formatNumber';
 import { colors, radius, spacing } from '../theme/colors';
@@ -86,9 +86,7 @@ export function MoreStoriesScreen() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = isUpdatesMode
-          ? await searchMangaDexStories({ orderBy: 'latestUploadedChapter', limit: 48 })
-          : await fetchFeaturedStoriesFromMangaDex(48);
+        const data = await fetchSeriesByTab(isUpdatesMode ? 'updates' : 'recommend', 48);
         if (mounted) {
           setStories(isUpdatesMode ? data : sortByReaders(data));
         }

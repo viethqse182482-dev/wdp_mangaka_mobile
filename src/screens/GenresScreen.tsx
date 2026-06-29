@@ -25,6 +25,7 @@ import {
   MangaDexTagOption,
   searchMangaDexStories,
 } from '../services/mangaDexService';
+import { fetchSeriesByFilter, searchSeries } from '../services/seriesService';
 import { FeaturedStory } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 
@@ -157,6 +158,18 @@ export function GenresScreen() {
     setSortExpanded(false);
     setError(null);
     try {
+      // Nếu user không chọn filter nặng (genre tag MangaDex / status) -> ưu tiên BE
+      const hasHeavyFilters = selectedGenreIds.length > 0 || selectedStatuses.length > 0;
+      if (!hasHeavyFilters) {
+        const data = await fetchSeriesByFilter({ title: keyword, limit: 60 });
+        if (data.length > 0) {
+          setStories(data);
+          setResultPage(1);
+          return;
+        }
+        // BE rỗng -> thử MangaDex
+      }
+
       const mappedStatuses = selectedStatuses.filter(
         (status): status is 'ongoing' | 'completed' | 'hiatus' | 'cancelled' =>
           ['ongoing', 'completed', 'hiatus', 'cancelled'].includes(status),
@@ -197,11 +210,7 @@ export function GenresScreen() {
     let mounted = true;
     setSuggestLoading(true);
     const timer = setTimeout(() => {
-      searchMangaDexStories({
-        title: query,
-        limit: 8,
-        orderBy: 'followedCount',
-      })
+      searchSeries(query, 8)
         .then((data) => {
           if (!mounted) return;
           setSuggestStories(data);

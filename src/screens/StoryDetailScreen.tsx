@@ -19,13 +19,12 @@ import { StoryActionBar } from '../components/story/StoryActionBar';
 import { StoryHero } from '../components/story/StoryHero';
 import { StoryOverview } from '../components/story/StoryOverview';
 import { StoryRatingRow, StoryStatsBar } from '../components/story/StoryStatsBar';
-import { getStoryDetailById } from '../data/mockStoryDetails';
-import { getStoryById } from '../data/mockStories';
 import { getAuthToken } from '../services/authService';
-import { fetchMangaDexStoryDetail } from '../services/mangaDexService';
-import { recordReadingHistory } from '../services/readingHistoryService';
+import { getReadingHistory, recordReadingHistory } from '../services/readingHistoryService';
+import { fetchStoryDetail } from '../services/seriesService';
 import { StoryDetail } from '../types/storyDetail';
 import { Chapter } from '../types/storyDetail';
+import { Story } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 
 export function StoryDetailScreen() {
@@ -35,16 +34,10 @@ export function StoryDetailScreen() {
   const [showTopFab, setShowTopFab] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [mangaDexStory, setMangaDexStory] = useState<StoryDetail | null>(null);
+  const [story, setStory] = useState<StoryDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState(false);
-
-  const isMangaDexStory = typeof id === 'string' && id.startsWith('mdx-');
-  const story = isMangaDexStory
-    ? mangaDexStory ?? undefined
-    : typeof id === 'string'
-      ? getStoryDetailById(id)
-      : undefined;
+  const [lastReadChapter, setLastReadChapter] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     let mounted = true;
@@ -66,21 +59,32 @@ export function StoryDetailScreen() {
   }, [id, router]);
 
   useEffect(() => {
-    if (!isMangaDexStory || typeof id !== 'string') {
-      setMangaDexStory(null);
-      setDetailError(false);
-      setLoadingDetail(false);
-      return;
-    }
+    if (!authChecked || typeof id !== 'string') return;
+
+    void getReadingHistory().then((entries) => {
+      const entry = entries.find((e) => e.id === id);
+      if (entry) {
+        setLastReadChapter(entry.lastReadChapter);
+      }
+    });
+  }, [authChecked, id]);
+
+  useEffect(() => {
+    if (!authChecked || typeof id !== 'string') return;
 
     let mounted = true;
     setLoadingDetail(true);
     setDetailError(false);
+    setStory(null);
 
-    fetchMangaDexStoryDetail(id)
+    fetchStoryDetail(id)
       .then((detail) => {
         if (!mounted) return;
-        setMangaDexStory(detail);
+        if (!detail) {
+          setDetailError(true);
+          return;
+        }
+        setStory(detail);
       })
       .catch(() => {
         if (!mounted) return;
@@ -94,7 +98,7 @@ export function StoryDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [id, isMangaDexStory]);
+  }, [authChecked, id]);
 
   const handleLoginFromModal = useCallback(() => {
     const redirectPath = typeof id === 'string' ? `/story/${id}` : '/';
@@ -111,25 +115,39 @@ export function StoryDetailScreen() {
     router.replace('/');
   }, [router]);
 
+  const navigateToReader = useCallback(
+    (chapterNumber: number) => {
+      if (!story) return;
+      const baseStory: Story = {
+        id: story.id,
+        title: story.title,
+        coverUrl: story.coverUrl,
+        latestChapter: story.latestChapter,
+        updatedAt: story.updatedAt,
+        views: story.views,
+        genres: story.genres,
+      };
+      void recordReadingHistory(baseStory, chapterNumber);
+      router.push(`/read/${story.id}/${chapterNumber}`);
+    },
+    [story, router],
+  );
+
   const handleReadFromStart = useCallback(() => {
-    if (!story) return;
-    const baseStory = getStoryById(story.id);
-    if (baseStory) {
-      void recordReadingHistory(baseStory, 1);
+    navigateToReader(1);
+  }, [navigateToReader]);
+
+  const handleContinueReading = useCallback(() => {
+    if (typeof lastReadChapter === 'number') {
+      navigateToReader(lastReadChapter);
     }
-    console.log('[Navigation] Đọc từ đầu:', story.id);
-  }, [story]);
+  }, [lastReadChapter, navigateToReader]);
 
   const handleChapterPress = useCallback(
     (chapter: Chapter) => {
-      if (!story) return;
-      const baseStory = getStoryById(story.id);
-      if (baseStory) {
-        void recordReadingHistory(baseStory, chapter.number);
-      }
-      console.log('[Navigation] Đọc chương:', chapter.number);
+      navigateToReader(chapter.number);
     },
-    [story],
+    [navigateToReader],
   );
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -223,8 +241,11 @@ export function StoryDetailScreen() {
         <StoryRatingRow rating={story.rating} />
         <StoryActionBar
           story={story}
+          lastReadChapter={lastReadChapter}
           onReadFromStart={handleReadFromStart}
+          onContinueReading={handleContinueReading}
           onNotifyPress={() => console.log('[Navigation] Bật thông báo:', story.id)}
+          onLoginRequired={() => setShowLoginModal(true)}
         />
         <StoryOverview story={story} />
         <ChapterList chapters={story.chapters} onChapterPress={handleChapterPress} />

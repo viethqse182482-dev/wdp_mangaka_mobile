@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
-import { getStoryById } from '../data/mockStories';
 import { getAuthToken } from '../services/authService';
 import { recordReadingHistory } from '../services/readingHistoryService';
 
@@ -18,10 +17,17 @@ export function useStoryNavigation() {
         return;
       }
 
-      const story = getStoryById(storyId);
-      if (story) {
-        void recordReadingHistory(story);
-      }
+      // Record một entry tối thiểu để lịch sử đọc biết user đã mở truyện.
+      // StoryDetail thật sẽ được fetch chi tiết khi vào màn StoryDetail.
+      void recordReadingHistory({
+        id: storyId,
+        title: '',
+        coverUrl: '',
+        latestChapter: 0,
+        updatedAt: '',
+        views: 0,
+        genres: [],
+      });
 
       router.push(`/story/${storyId}`);
     },

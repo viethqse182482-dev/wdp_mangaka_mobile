@@ -1,23 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Story } from '../../types/story';
-import { FollowButton } from '../library/FollowButton';
+import { BookshelfButton } from '../library/BookshelfButton';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface StoryActionBarProps {
   story: Story;
+  lastReadChapter?: number;
   onReadFromStart?: () => void;
+  onContinueReading?: () => void;
   onNotifyPress?: () => void;
+  onLoginRequired?: () => void;
 }
 
-export function StoryActionBar({ story, onReadFromStart, onNotifyPress }: StoryActionBarProps) {
+export function StoryActionBar({
+  story,
+  lastReadChapter,
+  onReadFromStart,
+  onContinueReading,
+  onNotifyPress,
+  onLoginRequired,
+}: StoryActionBarProps) {
+  const hasHistory = typeof lastReadChapter === 'number' && lastReadChapter > 1;
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.row}>
-        <View style={styles.followWrap}>
-          <FollowButton story={story} size={18} variant="heart" />
-          <Text style={styles.followLabel}>Theo Dõi</Text>
-        </View>
+        <BookshelfButton
+          seriesId={story.id}
+          variant="pill"
+          onLoginRequired={onLoginRequired}
+        />
 
         <Pressable
           onPress={onNotifyPress}
@@ -28,12 +41,33 @@ export function StoryActionBar({ story, onReadFromStart, onNotifyPress }: StoryA
         </Pressable>
       </View>
 
-      <Pressable
-        onPress={onReadFromStart}
-        style={({ pressed }) => [styles.readButton, pressed && styles.pressed]}
-      >
-        <Text style={styles.readButtonText}>Đọc Từ Đầu</Text>
-      </Pressable>
+      <View style={styles.readRow}>
+        {hasHistory && onContinueReading ? (
+          <Pressable
+            onPress={onContinueReading}
+            style={({ pressed }) => [styles.readButton, styles.readButtonSecondary, pressed && styles.pressed]}
+          >
+            <Ionicons name="play-forward" size={16} color={colors.accent} />
+            <Text style={styles.readButtonTextSecondary}>
+              Đọc Tiếp (Ch.{lastReadChapter})
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={onReadFromStart}
+          style={({ pressed }) => [
+            styles.readButton,
+            styles.readButtonPrimary,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="book" size={16} color={colors.white} />
+          <Text style={styles.readButtonTextPrimary}>
+            {hasHistory ? 'Đọc Từ Đầu' : 'Đọc'}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -47,23 +81,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  followWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-  },
-  followLabel: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
   },
   actionButton: {
     flex: 1,
@@ -82,16 +99,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  readButton: {
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
+  readRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
-  readButtonText: {
-    color: colors.textPrimary,
+  readButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+  },
+  readButtonPrimary: {
+    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  readButtonSecondary: {
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    flex: 2,
+  },
+  readButtonTextPrimary: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  readButtonTextSecondary: {
+    color: colors.accent,
     fontSize: 14,
     fontWeight: '700',
   },

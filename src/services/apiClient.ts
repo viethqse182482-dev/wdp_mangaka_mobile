@@ -115,3 +115,35 @@ export async function apiPost<T>(
 
   return response.json() as Promise<T>;
 }
+
+export async function apiDelete<T>(
+  path: string,
+  { token = API_TOKEN, params, skipAuth = false }: ApiRequestOptions = {},
+): Promise<T> {
+  const url = new URL(path, API_BASE_URL);
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(url.toString(), {
+      method: 'DELETE',
+      headers: buildHeaders(token, false, skipAuth),
+    });
+  } catch {
+    throw new ApiError('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.', 0);
+  }
+
+  if (!response.ok) {
+    throw new ApiError(await parseErrorMessage(response), response.status);
+  }
+
+  return response.json() as Promise<T>;
+}

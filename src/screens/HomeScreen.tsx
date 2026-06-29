@@ -21,16 +21,16 @@ import { BottomTabBar } from '../components/home/BottomTabBar';
 import { AccountDrawer } from '../components/home/AccountDrawer';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
 import { useStoryNavigation } from '../hooks/useStoryNavigation';
-import { hotStories, latestStories } from '../data/mockStories';
-import { newStories } from '../data/mockStoryDetails';
 import { FeaturedStory, Story } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 import { StoryFeaturedCard } from '../components/home/StoryFeaturedCard';
 import { StoryRankingCard } from '../components/home/StoryRankingCard';
 import {
-  fetchFeaturedStoriesFromMangaDex,
-  searchMangaDexStories,
-} from '../services/mangaDexService';
+  fetchFeaturedStories,
+  fetchSeriesByTab,
+  fetchSeriesList,
+  searchSeries,
+} from '../services/seriesService';
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = spacing.md;
@@ -48,7 +48,9 @@ function sortByReaders(stories: FeaturedStory[]): FeaturedStory[] {
 export function HomeScreen() {
   const router = useRouter();
   const { openStory, loginPromptModal } = useStoryNavigation();
-  const [featuredStories, setFeaturedStories] = useState<FeaturedStory[]>(newStories);
+  const [bannerStories, setBannerStories] = useState<Story[]>([]);
+  const [gridStories, setGridStories] = useState<Story[]>([]);
+  const [featuredStories, setFeaturedStories] = useState<FeaturedStory[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [recommendTab, setRecommendTab] = useState<'all' | 'ranking'>('all');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -85,36 +87,26 @@ export function HomeScreen() {
     router.push({ pathname: '/more-stories', params: { mode: 'recommend' } });
   }, [router]);
 
-  const gridRows = useMemo(() => {
-    const rows: Story[][] = [];
-    for (let i = 0; i < latestStories.length; i += GRID_COLUMNS) {
-      rows.push(latestStories.slice(i, i + GRID_COLUMNS));
-    }
-    return rows;
-  }, []);
-
   useEffect(() => {
     let mounted = true;
 
-    const loadFeaturedStories = async () => {
-      setFeaturedLoading(true);
+    const loadHomeData = async () => {
       try {
-        const stories = await fetchFeaturedStoriesFromMangaDex(8);
-        if (mounted && stories.length > 0) {
-          setFeaturedStories(sortByReaders(stories));
-        }
-      } catch {
-        if (mounted) {
-          setFeaturedStories(sortByReaders(newStories));
-        }
+        const [banner, grid, featured] = await Promise.all([
+          fetchSeriesList({ sort: 'average_score', limit: 5 }),
+          fetchSeriesList({ sort: 'updatedAt', limit: GRID_COLUMNS * 2 }),
+          fetchFeaturedStories(8),
+        ]);
+        if (!mounted) return;
+        setBannerStories(banner.stories);
+        setGridStories(grid.stories);
+        if (featured.length > 0) setFeaturedStories(sortByReaders(featured));
       } finally {
-        if (mounted) {
-          setFeaturedLoading(false);
-        }
+        if (mounted) setFeaturedLoading(false);
       }
     };
 
-    void loadFeaturedStories();
+    void loadHomeData();
 
     return () => {
       mounted = false;
@@ -139,11 +131,7 @@ export function HomeScreen() {
     setSearchLoading(true);
 
     const timer = setTimeout(() => {
-      searchMangaDexStories({
-        title: keyword,
-        limit: 8,
-        orderBy: 'followedCount',
-      })
+      searchSeries(keyword, 8)
         .then((data) => {
           if (!mounted) return;
           setSearchResults(sortByReaders(data));
@@ -175,6 +163,14 @@ export function HomeScreen() {
     () => sortByReaders(featuredStories),
     [featuredStories],
   );
+
+  const gridRows = useMemo(() => {
+    const rows: Story[][] = [];
+    for (let i = 0; i < gridStories.length; i += GRID_COLUMNS) {
+      rows.push(gridStories.slice(i, i + GRID_COLUMNS));
+    }
+    return rows;
+  }, [gridStories]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -239,7 +235,7 @@ export function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <BannerSlider stories={hotStories} onStoryPress={handlePressStory} />
+        <BannerSlider stories={bannerStories} onStoryPress={handlePressStory} />
 
         <SectionHeader
           title="Truyện Mới Cập Nhật"
@@ -294,7 +290,7 @@ export function HomeScreen() {
         {featuredLoading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator color={colors.accent} />
-            <Text style={styles.loadingText}>Đang tải truyện từ MangaDex...</Text>
+            <Text style={styles.loadingText}>Đang tải truyện...</Text>
           </View>
         ) : recommendTab === 'all' ? (
           <View style={styles.featuredList}>

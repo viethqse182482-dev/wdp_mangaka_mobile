@@ -22,7 +22,16 @@ export default function RootLayout() {
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
         }}
-      />
+      >
+        <Stack.Screen
+          name="read/[storyId]/[chapter]"
+          options={{
+            contentStyle: { backgroundColor: '#000000' },
+            animation: 'fade',
+            gestureEnabled: true,
+          }}
+        />
+      </Stack>
     </SafeAreaProvider>
   );
 }
