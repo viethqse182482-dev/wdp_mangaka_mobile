@@ -1,17 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { StoryComment } from '../../types/storyDetail';
+import { VoteSection } from './VoteSection';
+import { StoryComment, StoryDetail } from '../../types/storyDetail';
 import { formatReadTime } from '../../utils/formatReadTime';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface CommentSectionProps {
-  comments: StoryComment[];
+  story: StoryDetail;
+  onVoteSuccess?: (seriesId: string, averageScore: number, totalVotes: number) => void;
 }
 
-export function CommentSection({ comments: initialComments }: CommentSectionProps) {
-  const [comments, setComments] = useState(initialComments);
+export function CommentSection({ story, onVoteSuccess }: CommentSectionProps) {
+  const [comments, setComments] = useState(story.comments);
   const [draft, setDraft] = useState('');
+
+  const handleVoteSuccess = (result: { average_score: number; total_votes: number }) => {
+    onVoteSuccess?.(story.id, result.average_score, result.total_votes);
+  };
 
   const handleSend = () => {
     const content = draft.trim();
@@ -23,7 +29,7 @@ export function CommentSection({ comments: initialComments }: CommentSectionProp
         username: 'Bạn',
         badge: 'Độc giả',
         badgeColor: colors.accent,
-        chapterNumber: initialComments[0]?.chapterNumber ?? 1,
+        chapterNumber: story.comments[0]?.chapterNumber ?? 1,
         content,
         createdAt: new Date().toISOString(),
       },
@@ -35,6 +41,13 @@ export function CommentSection({ comments: initialComments }: CommentSectionProp
   return (
     <View style={styles.card}>
       <Text style={styles.title}>BÌNH LUẬN</Text>
+
+      <VoteSection
+        seriesId={story.id}
+        initialRating={story.rating}
+        initialVotes={story.ratingCount}
+        onVoteSuccess={handleVoteSuccess}
+      />
 
       <View style={styles.inputRow}>
         <TextInput

@@ -2,21 +2,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { BookshelfItem } from '../../services/bookshelfService';
+import { FeaturedStory } from '../../types/story';
 import { colors, radius, spacing } from '../../theme/colors';
 
-interface LibraryStoryRowProps {
-  story: BookshelfItem;
+type LibraryStoryRowProps = {
+  story: BookshelfItem | (FeaturedStory & { followedAt?: string });
   onPress: (id: string) => void;
   onRemove: (id: string) => void;
-}
+  removeLabel?: string;
+};
 
-export function LibraryStoryRow({ story, onPress, onRemove }: LibraryStoryRowProps) {
-  const { series } = story;
-  const cover = series.cover_image_url ?? '';
-  const genres = Array.isArray(series.genre) ? series.genre : [];
-  const totalChapters = series.total_chapters ?? 0;
-  const latest = series.latest_chapter_number ?? null;
-  const addedAt = formatAddedAt(story.added_at);
+export function LibraryStoryRow({ story, onPress, onRemove, removeLabel }: LibraryStoryRowProps) {
+  const isBookshelf = 'series' in story;
+  const series = isBookshelf ? story.series : story;
+  const cover = (series as any).cover_image_url ?? (series as any).coverUrl ?? '';
+  const name = (series as any).name ?? (series as any).title ?? '';
+  const genres = Array.isArray((series as any).genre) ? (series as any).genre : [];
+  const totalChapters = (series as any).total_chapters ?? (series as any).totalChapters ?? 0;
+  const latest = (series as any).latest_chapter_number ?? (series as any).latestChapter ?? null;
+  const followedAt = 'followedAt' in story ? story.followedAt : null;
 
   return (
     <Pressable
@@ -35,7 +39,7 @@ export function LibraryStoryRow({ story, onPress, onRemove }: LibraryStoryRowPro
 
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
-          {series.name || 'Truyện chưa đặt tên'}
+          {name || 'Truyện chưa đặt tên'}
         </Text>
 
         {genres.length > 0 ? (
@@ -52,8 +56,12 @@ export function LibraryStoryRow({ story, onPress, onRemove }: LibraryStoryRowPro
                 : `${totalChapters} chương`
               : 'Chưa có chương'}
           </Text>
-          <Text style={styles.dot}>•</Text>
-          <Text style={styles.updatedAt}>{addedAt}</Text>
+          {followedAt ? (
+            <>
+              <Text style={styles.dot}>•</Text>
+              <Text style={styles.updatedAt}>{formatDate(followedAt)}</Text>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -62,13 +70,17 @@ export function LibraryStoryRow({ story, onPress, onRemove }: LibraryStoryRowPro
         hitSlop={8}
         style={({ pressed }) => [styles.unfollowButton, pressed && styles.pressed]}
       >
-        <Ionicons name="bookmark" size={20} color={colors.accent} />
+        <Ionicons
+          name={removeLabel === 'Bỏ theo dõi' ? 'heart' : 'bookmark'}
+          size={20}
+          color={colors.accent}
+        />
       </Pressable>
     </Pressable>
   );
 }
 
-function formatAddedAt(iso: string): string {
+function formatDate(iso: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';

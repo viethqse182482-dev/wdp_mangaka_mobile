@@ -1,8 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Story } from '../../types/story';
 import { colors, radius, spacing } from '../../theme/colors';
-import { FollowButton } from '../library/FollowButton';
 
 interface StoryHorizontalCardProps {
   story: Story;
@@ -20,6 +20,8 @@ function formatViews(views: number): string {
 }
 
 export function StoryHorizontalCard({ story, rank, onPress }: StoryHorizontalCardProps) {
+  const hasRating = story.rating && story.rating > 0;
+
   return (
     <Pressable
       onPress={() => onPress(story.id)}
@@ -38,16 +40,27 @@ export function StoryHorizontalCard({ story, rank, onPress }: StoryHorizontalCar
           contentFit="cover"
           transition={200}
         />
-        <View style={styles.followButton}>
-          <FollowButton story={story} size={18} />
-        </View>
+        {hasRating && (
+          <View style={styles.ratingOverlay}>
+            <Ionicons name="star" size={10} color={colors.warning} />
+            <Text style={styles.ratingText}>{story.rating}</Text>
+          </View>
+        )}
       </View>
 
       <Text style={styles.title} numberOfLines={2}>
         {story.title}
       </Text>
 
-      <Text style={styles.views}>{formatViews(story.views)} lượt xem</Text>
+      {hasRating ? (
+        <View style={styles.ratingRow}>
+          <Ionicons name="star" size={10} color={colors.warning} />
+          <Text style={styles.ratingValue}> {story.rating}</Text>
+          <Text style={styles.ratingCount}>({story.ratingCount})</Text>
+        </View>
+      ) : (
+        <Text style={styles.views}>{formatViews(story.views)} lượt xem</Text>
+      )}
       <Text style={styles.chapter}>Chương {story.latestChapter}</Text>
     </Pressable>
   );
@@ -88,16 +101,22 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  followButton: {
+  ratingOverlay: {
     position: 'absolute',
-    top: spacing.xs,
+    bottom: spacing.xs,
     right: spacing.xs,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  ratingText: {
+    color: colors.warning,
+    fontSize: 10,
+    fontWeight: '700',
   },
   title: {
     color: colors.textPrimary,
@@ -105,6 +124,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 16,
     minHeight: 32,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  ratingValue: {
+    color: colors.warning,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  ratingCount: {
+    color: colors.textMuted,
+    fontSize: 10,
   },
   views: {
     color: colors.accent,

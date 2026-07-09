@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   ListRenderItem,
+  Pressable,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -23,11 +24,17 @@ import {
   fetchBookshelf,
   removeFromBookshelf,
 } from '../services/bookshelfService';
+import { fetchFollowedSeries, unfollowSeries } from '../services/followService';
+import { FeaturedStory } from '../types/story';
 import { colors, spacing } from '../theme/colors';
+
+type TabType = 'bookshelf' | 'following';
 
 export function LibraryScreen() {
   const { openStory, loginPromptModal } = useStoryNavigation();
-  const [items, setItems] = useState<BookshelfItem[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('bookshelf');
+  const [bookshelfItems, setBookshelfItems] = useState<BookshelfItem[]>([]);
+  const [followingItems, setFollowingItems] = useState<(FeaturedStory & { followedAt: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +56,18 @@ export function LibraryScreen() {
     setError(null);
 
     try {
-      const response = await fetchBookshelf(1, 100);
-      setItems(response.data ?? []);
+      if (activeTab === 'bookshelf') {
+        const response = await fetchBookshelf(1, 100);
+        setBookshelfItems(response.data ?? []);
+      } else {
+        const response = await fetchFollowedSeries(1, 100);
+        setFollowingItems(response.data ?? []);
+      }
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);
       if (errMessage === 'UNAUTHENTICATED') {
-        setItems([]);
+        setBookshelfItems([]);
+        setFollowingItems([]);
       } else {
         setError(errMessage);
       }
@@ -62,7 +75,7 @@ export function LibraryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [activeTab]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,10 +87,10 @@ export function LibraryScreen() {
     void openStory(seriesId);
   }, [openStory]);
 
-  const handleRemove = useCallback(async (seriesId: string) => {
+  const handleRemoveFromBookshelf = useCallback(async (seriesId: string) => {
     try {
       await removeFromBookshelf(seriesId);
-      setItems((current) =>
+      setBookshelfItems((current) =>
         current.filter((item) => item.series._id !== seriesId),
       );
     } catch (err) {
@@ -90,12 +103,42 @@ export function LibraryScreen() {
     }
   }, []);
 
-  const renderItem: ListRenderItem<BookshelfItem> = useCallback(
+  const handleUnfollow = useCallback(async (seriesId: string) => {
+    try {
+      await unfollowSeries(seriesId);
+      setFollowingItems((current) =>
+        current.filter((item) => item._id !== seriesId),
+      );
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
+      if (errMessage === 'UNAUTHENTICATED') {
+        Alert.alert('Phiên đăng nhập hết hạn', 'Vui lòng đăng nhập lại.');
+      } else {
+        Alert.alert('Không thể bỏ theo dõi', errMessage);
+      }
+    }
+  }, []);
+
+  const renderBookshelfItem: ListRenderItem<BookshelfItem> = useCallback(
     ({ item }) => (
-      <LibraryStoryRow story={item} onPress={handleStoryPress} onRemove={handleRemove} />
+      <LibraryStoryRow story={item} onPress={handleStoryPress} onRemove={handleRemoveFromBookshelf} />
     ),
-    [handleStoryPress, handleRemove],
+    [handleStoryPress, handleRemoveFromBookshelf],
   );
+
+  const renderFollowingItem: ListRenderItem<FeaturedStory & { followedAt: string }> = useCallback(
+    ({ item }) => (
+      <LibraryStoryRow
+        story={item}
+        onPress={handleStoryPress}
+        onRemove={handleUnfollow}
+        removeLabel="Bỏ theo dõi"
+      />
+    ),
+    [handleStoryPress, handleUnfollow],
+  );
+
+  const currentItems = activeTab === 'bookshelf' ? bookshelfItems : followingItems;
 
   const renderSeparator = useCallback(
     () => <View style={styles.separator} />,
@@ -105,13 +148,19 @@ export function LibraryScreen() {
   const renderEmpty = useCallback(() => {
     if (loading) return null;
 
+    const isFollowing = activeTab === 'following';
+    const emptyTitle = isFollowing ? 'Chưa theo dõi truyện nào' : 'Tủ sách trống';
+    const emptySubtitle = isFollowing
+      ? 'Nhấn nút "Theo dõi" trên truyện để nhận thông báo khi có chapter mới.'
+      : 'Nhấn nút "Lưu vào tủ sách" trên truyện để xem lại tại đây.';
+
     if (error) {
       return (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
             <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
           </View>
-          <Text style={styles.emptyTitle}>Không tải được tủ sách</Text>
+          <Text style={styles.emptyTitle}>Không tải được dữ liệu</Text>
           <Text style={styles.emptySubtitle}>{error}</Text>
         </View>
       );
@@ -120,25 +169,52 @@ export function LibraryScreen() {
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyIcon}>
-          <Ionicons name="book-outline" size={36} color={colors.textMuted} />
+          <Ionicons name={isFollowing ? 'heart-outline' : 'book-outline'} size={36} color={colors.textMuted} />
         </View>
-        <Text style={styles.emptyTitle}>Tủ sách trống</Text>
-        <Text style={styles.emptySubtitle}>
-          Nhấn nút "Lưu vào tủ sách" trên truyện để theo dõi và xem lại tại đây.
-        </Text>
+        <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+        <Text style={styles.emptySubtitle}>{emptySubtitle}</Text>
       </View>
     );
-  }, [loading, error]);
+  }, [loading, error, activeTab]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
-        <Text style={styles.title}>Tủ sách</Text>
-        <Text style={styles.subtitle}>Truyện bạn đã lưu</Text>
-        {!loading && items.length > 0 ? (
-          <Text style={styles.count}>{items.length} truyện</Text>
+        <Text style={styles.title}>Thư viện</Text>
+        <View style={styles.tabRow}>
+          <Pressable
+            onPress={() => setActiveTab('bookshelf')}
+            style={[styles.tab, activeTab === 'bookshelf' && styles.tabActive]}
+          >
+            <Ionicons
+              name="book"
+              size={16}
+              color={activeTab === 'bookshelf' ? colors.accent : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'bookshelf' && styles.tabTextActive]}>
+              Tủ sách
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setActiveTab('following')}
+            style={[styles.tab, activeTab === 'following' && styles.tabActive]}
+          >
+            <Ionicons
+              name="heart"
+              size={16}
+              color={activeTab === 'following' ? colors.accent : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'following' && styles.tabTextActive]}>
+              Theo dõi
+            </Text>
+          </Pressable>
+        </View>
+        {!loading && currentItems.length > 0 ? (
+          <Text style={styles.count}>
+            {activeTab === 'bookshelf' ? bookshelfItems.length : followingItems.length} truyện
+          </Text>
         ) : null}
       </View>
 
@@ -148,14 +224,14 @@ export function LibraryScreen() {
         </View>
       ) : (
         <FlatList
-          data={items}
+          data={currentItems as BookshelfItem[]}
           keyExtractor={(item) => item._id}
-          renderItem={renderItem}
+          renderItem={activeTab === 'bookshelf' ? renderBookshelfItem : renderFollowingItem}
           ItemSeparatorComponent={renderSeparator}
           ListEmptyComponent={renderEmpty}
           contentContainerStyle={[
             styles.listContent,
-            items.length === 0 && styles.listContentEmpty,
+            currentItems.length === 0 && styles.listContentEmpty,
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -198,10 +274,33 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  subtitle: {
-    color: colors.textSecondary,
+  tabRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActive: {
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.accent,
+  },
+  tabText: {
+    color: colors.textMuted,
     fontSize: 13,
-    marginTop: 4,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: colors.accent,
   },
   count: {
     color: colors.accent,

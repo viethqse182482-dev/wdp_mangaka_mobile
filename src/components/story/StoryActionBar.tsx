@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Story } from '../../types/story';
 import { BookshelfButton } from '../library/BookshelfButton';
+import { NotificationToggle } from './NotificationToggle';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface StoryActionBarProps {
@@ -9,7 +10,6 @@ interface StoryActionBarProps {
   lastReadChapter?: number;
   onReadFromStart?: () => void;
   onContinueReading?: () => void;
-  onNotifyPress?: () => void;
   onLoginRequired?: () => void;
 }
 
@@ -18,7 +18,6 @@ export function StoryActionBar({
   lastReadChapter,
   onReadFromStart,
   onContinueReading,
-  onNotifyPress,
   onLoginRequired,
 }: StoryActionBarProps) {
   const hasHistory = typeof lastReadChapter === 'number' && lastReadChapter > 1;
@@ -32,28 +31,14 @@ export function StoryActionBar({
           onLoginRequired={onLoginRequired}
         />
 
-        <Pressable
-          onPress={onNotifyPress}
-          style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="notifications-outline" size={18} color={colors.textPrimary} />
-          <Text style={styles.actionText}>Thông Báo</Text>
-        </Pressable>
+        <NotificationToggle
+          seriesId={story.id}
+          seriesTitle={story.title}
+          onLoginRequired={onLoginRequired}
+        />
       </View>
 
       <View style={styles.readRow}>
-        {hasHistory && onContinueReading ? (
-          <Pressable
-            onPress={onContinueReading}
-            style={({ pressed }) => [styles.readButton, styles.readButtonSecondary, pressed && styles.pressed]}
-          >
-            <Ionicons name="play-forward" size={16} color={colors.accent} />
-            <Text style={styles.readButtonTextSecondary}>
-              Đọc Tiếp (Ch.{lastReadChapter})
-            </Text>
-          </Pressable>
-        ) : null}
-
         <Pressable
           onPress={onReadFromStart}
           style={({ pressed }) => [
@@ -81,23 +66,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-  },
-  actionText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
   },
   readRow: {
     flexDirection: 'row',

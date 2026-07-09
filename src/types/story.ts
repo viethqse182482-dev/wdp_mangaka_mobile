@@ -6,6 +6,8 @@ export interface Story {
   updatedAt: string;
   views: number;
   genres: string[];
+  rating?: number;
+  ratingCount?: number;
 }
 
 export interface FeaturedStory extends Story {

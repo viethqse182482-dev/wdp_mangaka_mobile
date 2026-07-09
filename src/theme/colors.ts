@@ -17,6 +17,7 @@ export const colors = {
   success: '#4ADE80',
   danger: '#EF4444',
   gold: '#FBBF24',
+  warning: '#FBBF24',
 } as const;
 
 export const spacing = {

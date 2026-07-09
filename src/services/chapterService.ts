@@ -1,4 +1,5 @@
-import { MANGADEX_API_BASE_URL, MANGADEX_UPLOADS_BASE_URL } from '../config/mangadex';
+import { apiGet } from './apiClient';
+import { getAuthToken } from './authService';
 
 export interface ChapterPage {
   index: number;
@@ -22,57 +23,75 @@ interface MangaDexChapterResponse {
   };
 }
 
-async function fetchChapterFromMangaDex(chapterId: string): Promise<ChapterPage[]> {
-  const url = new URL(`/at-home/server/${chapterId}`, MANGADEX_API_BASE_URL);
-
-  const response = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' },
-  });
-
-  if (!response.ok) {
-    throw new Error(`MangaDex chapter error: ${response.status}`);
-  }
-
-  const data = (await response.json()) as MangaDexChapterResponse;
-
-  if (data.result !== 'ok' || !data.chapter) {
-    throw new Error('Invalid MangaDex chapter response');
-  }
-
-  const baseUrl = data.baseUrl ?? MANGADEX_UPLOADS_BASE_URL;
-  const hash = data.chapter.hash;
-  const imageFiles = data.chapter.data;
-
-  return imageFiles.map((fileName, index) => ({
-    index,
-    url: `${baseUrl}/data/${hash}/${fileName}`,
-  }));
+interface BeChapterPagesResponse {
+  success: boolean;
+  data?: Array<{
+    page_number: number;
+    final_image_url?: string;
+    result_image_url?: string;
+    original_image_url?: string;
+    width?: number;
+    height?: number;
+  }>;
+  chapter?: {
+    _id: string;
+    chapter_number: number;
+    title?: string;
+  };
+  series?: {
+    _id: string;
+    name?: string;
+  };
 }
 
-function buildMockPages(storyId: string, chapterNumber: number): ChapterPage[] {
-  const count = Math.floor(Math.random() * 10) + 12;
-  return Array.from({ length: count }, (_, index) => ({
-    index,
-    url: `https://picsum.photos/seed/${storyId}-${chapterNumber}-${index}/600/800`,
-  }));
+async function fetchChapterPagesFromBe(chapterId: string): Promise<ChapterPage[]> {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error('Bạn cần đăng nhập để đọc chapter này.');
+  }
+
+  const response = await apiGet<BeChapterPagesResponse>(
+    `/reader/chapters/${encodeURIComponent(chapterId)}/pages`,
+    { token },
+  );
+
+  if (!response.success || !Array.isArray(response.data)) {
+    throw new Error('BE không trả về danh sách trang cho chapter này.');
+  }
+
+  const pages = response.data
+    .slice()
+    .sort((a, b) => (a.page_number ?? 0) - (b.page_number ?? 0))
+    .map((page, index) => ({
+      index,
+      url:
+        page.final_image_url ||
+        page.result_image_url ||
+        page.original_image_url ||
+        '',
+    }))
+    .filter((page) => page.url.length > 0);
+
+  if (pages.length === 0) {
+    throw new Error('Chapter này chưa có trang nào được publish.');
+  }
+
+  return pages;
 }
 
 export async function fetchChapterPages(
   storyId: string,
   chapterNumber: number,
-  mangaDexChapterId?: string,
+  chapterId?: string,
 ): Promise<ChapterDetail> {
-  const isMangaDex = typeof mangaDexChapterId === 'string' && mangaDexChapterId.length > 0;
-
-  let pages: ChapterPage[];
-  if (isMangaDex) {
-    pages = await fetchChapterFromMangaDex(mangaDexChapterId!);
-  } else {
-    pages = buildMockPages(storyId, chapterNumber);
+  if (!chapterId || chapterId.trim().length === 0) {
+    throw new Error('Chapter ID not provided.');
   }
 
+  const pages = await fetchChapterPagesFromBe(chapterId);
+
   return {
-    id: isMangaDex ? mangaDexChapterId! : `${storyId}-ch-${chapterNumber}`,
+    id: chapterId,
     storyId,
     chapterNumber,
     pages,

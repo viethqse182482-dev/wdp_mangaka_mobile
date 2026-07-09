@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   LayoutChangeEvent,
@@ -20,12 +19,9 @@ import { AccountDrawer } from '../components/home/AccountDrawer';
 import { BottomTabBar } from '../components/home/BottomTabBar';
 import { StoryFeaturedCard } from '../components/home/StoryFeaturedCard';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
-import {
-  fetchMangaDexTagOptions,
-  MangaDexTagOption,
-  searchMangaDexStories,
-} from '../services/mangaDexService';
+import { fetchGenres } from '../services/genreService';
 import { fetchSeriesByFilter, searchSeries } from '../services/seriesService';
+import { Genre } from '../types/genre';
 import { FeaturedStory } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 
@@ -34,19 +30,9 @@ interface FilterOption {
   label: string;
 }
 
-const STATUS_OPTIONS: FilterOption[] = [
-  { id: 'none', label: 'Chưa bắt đầu' },
-  { id: 'cancelled', label: 'Đã dừng' },
-  { id: 'hiatus', label: 'Hoãn lại' },
-  { id: 'ongoing', label: 'Đang thực hiện' },
-  { id: 'completed', label: 'Hoàn thành' },
-  { id: 'novel', label: 'Có Truyện Chữ' },
-];
-
 const SORT_OPTIONS: FilterOption[] = [
-  { id: 'latestUploadedChapter', label: 'Lượt xem' },
-  { id: 'rating', label: 'Lượt đánh giá' },
-  { id: 'followedCount', label: 'Lượt theo dõi' },
+  { id: 'average_score', label: 'Điểm Đánh Giá' },
+  { id: 'view_count', label: 'Lượt Xem' },
   { id: 'updatedAt', label: 'Ngày Cập Nhật' },
   { id: 'createdAt', label: 'Truyện Mới' },
 ];
@@ -108,10 +94,9 @@ export function GenresScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [keyword, setKeyword] = useState('');
-  const [genres, setGenres] = useState<MangaDexTagOption[]>([]);
+  const [genres, setGenres] = useState<Genre[]>([]);
   const [selectedGenreIds, setSelectedGenreIds] = useState<string[]>([]);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [selectedSort, setSelectedSort] = useState('followedCount');
+  const [selectedSort, setSelectedSort] = useState('average_score');
   const [stories, setStories] = useState<FeaturedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -141,11 +126,10 @@ export function GenresScreen() {
     setError(null);
 
     try {
-      const data = await fetchMangaDexTagOptions();
-      const preferred = data.filter((tag) => tag.group === 'genre' || tag.group === 'theme');
-      setGenres(preferred.slice(0, 36));
+      const data = await fetchGenres();
+      setGenres(data);
     } catch {
-      setError('Không tải được bộ lọc thể loại từ MangaDex.');
+      setError('Không tải được bộ lọc thể loại.');
     } finally {
       setLoading(false);
     }
@@ -157,34 +141,13 @@ export function GenresScreen() {
     setGenreExpanded(false);
     setSortExpanded(false);
     setError(null);
-    try {
-      // Nếu user không chọn filter nặng (genre tag MangaDex / status) -> ưu tiên BE
-      const hasHeavyFilters = selectedGenreIds.length > 0 || selectedStatuses.length > 0;
-      if (!hasHeavyFilters) {
-        const data = await fetchSeriesByFilter({ title: keyword, limit: 60 });
-        if (data.length > 0) {
-          setStories(data);
-          setResultPage(1);
-          return;
-        }
-        // BE rỗng -> thử MangaDex
-      }
 
-      const mappedStatuses = selectedStatuses.filter(
-        (status): status is 'ongoing' | 'completed' | 'hiatus' | 'cancelled' =>
-          ['ongoing', 'completed', 'hiatus', 'cancelled'].includes(status),
-      );
-      const data = await searchMangaDexStories({
+    try {
+      const selectedGenre = selectedGenreIds.length > 0 ? selectedGenreIds[0] : undefined;
+      const data = await fetchSeriesByFilter({
         title: keyword,
+        genre: selectedGenre,
         limit: 60,
-        includedTagIds: selectedGenreIds,
-        statuses: mappedStatuses,
-        orderBy: selectedSort as
-          | 'followedCount'
-          | 'rating'
-          | 'updatedAt'
-          | 'latestUploadedChapter'
-          | 'createdAt',
       });
       setStories(data);
       setResultPage(1);
@@ -193,7 +156,7 @@ export function GenresScreen() {
     } finally {
       setSearching(false);
     }
-  }, [keyword, selectedGenreIds, selectedSort, selectedStatuses]);
+  }, [keyword, selectedGenreIds]);
 
   useEffect(() => {
     void loadFilters();
@@ -333,16 +296,6 @@ export function GenresScreen() {
             )}
           </View>
         ) : null}
-
-        <Text style={styles.groupTitle}>Trạng Thái</Text>
-        <View style={styles.groupBox}>
-          <FilterCheckboxGrid
-            options={STATUS_OPTIONS}
-            columnWidth={columnWidth}
-            checked={(id) => selectedStatuses.includes(id)}
-            onToggle={(id) => toggleMultiSelect(id, selectedStatuses, setSelectedStatuses)}
-          />
-        </View>
 
         <View style={styles.sectionHeader}>
           <Pressable

@@ -1,16 +1,11 @@
 import { BASE_GENRES } from '../data/baseGenres';
 import { Genre } from '../types/genre';
 import { apiGet } from './apiClient';
+import { getAuthToken } from './authService';
 
-interface BESeries {
-  genre?: string;
-  category?: string;
-  tags?: string[];
-}
-
-interface BESeriesListResponse {
+interface BEGenresResponse {
   success: boolean;
-  data: BESeries[];
+  data: string[];
 }
 
 function slugify(name: string): string {
@@ -20,20 +15,6 @@ function slugify(name: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '-');
-}
-
-function collectGenreStrings(seriesList: BESeries[]): string[] {
-  const values = new Set<string>();
-
-  seriesList.forEach((series) => {
-    if (series.genre?.trim()) values.add(series.genre.trim());
-    if (series.category?.trim()) values.add(series.category.trim());
-    series.tags?.forEach((tag) => {
-      if (tag?.trim()) values.add(tag.trim());
-    });
-  });
-
-  return Array.from(values);
 }
 
 function mergeGenreNames(base: readonly string[], fromBackend: string[]): string[] {
@@ -49,30 +30,17 @@ function mergeGenreNames(base: readonly string[], fromBackend: string[]): string
 }
 
 async function fetchBackendGenreNames(): Promise<string[]> {
-  try {
-    const response = await apiGet<BESeriesListResponse>('/reader/series', {
-      params: { limit: 200, page: 1 },
-    });
+  const token = await getAuthToken();
+  if (!token) return [];
 
+  try {
+    const response = await apiGet<BEGenresResponse>('/reader/genres', { token });
     if (!response.success || !Array.isArray(response.data)) {
       return [];
     }
-
-    return collectGenreStrings(response.data);
+    return response.data;
   } catch {
-    try {
-      const response = await apiGet<BESeriesListResponse>('/series', {
-        params: { limit: 200, page: 1, status: 'published' },
-      });
-
-      if (!response.success || !Array.isArray(response.data)) {
-        return [];
-      }
-
-      return collectGenreStrings(response.data);
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 

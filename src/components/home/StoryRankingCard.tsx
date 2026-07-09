@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { FeaturedStory } from '../../types/story';
+import { Story } from '../../types/story';
 import { formatCompactNumber } from '../../utils/formatNumber';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface StoryRankingCardProps {
-  story: FeaturedStory;
+  story: Story;
   rank: number;
   onPress: (id: string) => void;
 }

@@ -10,9 +10,8 @@ interface StoryStatsBarProps {
 
 export function StoryStatsBar({ story }: StoryStatsBarProps) {
   const items = [
-    { icon: 'star' as const, value: formatCompactNumber(story.ratingCount) },
+    { icon: 'star' as const, value: Number(story.rating).toFixed(1) },
     { icon: 'eye' as const, value: formatCompactNumber(story.views) },
-    { icon: 'walk' as const, value: formatCompactNumber(story.followers) },
   ];
 
   return (
@@ -23,26 +22,6 @@ export function StoryStatsBar({ story }: StoryStatsBarProps) {
           <Text style={styles.statValue}>{item.value}</Text>
         </View>
       ))}
-    </View>
-  );
-}
-
-export function StoryRatingRow({ rating }: { rating: number }) {
-  return (
-    <View style={styles.ratingRow}>
-      <View style={styles.stars}>
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Ionicons
-            key={index}
-            name={index < rating ? 'star' : 'star-outline'}
-            size={18}
-            color={index < rating ? colors.gold : colors.textMuted}
-          />
-        ))}
-      </View>
-      <Text style={styles.ratingText}>
-        {rating} / 5
-      </Text>
     </View>
   );
 }
@@ -69,21 +48,5 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 13,
     fontWeight: '700',
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
-  },
-  stars: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  ratingText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
   },
 });

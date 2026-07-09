@@ -27,6 +27,7 @@ import { StoryFeaturedCard } from '../components/home/StoryFeaturedCard';
 import { StoryRankingCard } from '../components/home/StoryRankingCard';
 import {
   fetchFeaturedStories,
+  fetchRanking,
   fetchSeriesByTab,
   fetchSeriesList,
   searchSeries,
@@ -53,6 +54,8 @@ export function HomeScreen() {
   const [featuredStories, setFeaturedStories] = useState<FeaturedStory[]>([]);
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [recommendTab, setRecommendTab] = useState<'all' | 'ranking'>('all');
+  const [rankingStories, setRankingStories] = useState<Story[]>([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
@@ -114,6 +117,32 @@ export function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    if (recommendTab !== 'ranking') return;
+    if (rankingStories.length > 0) return;
+
+    let mounted = true;
+    setRankingLoading(true);
+
+    fetchRanking()
+      .then((data) => {
+        if (!mounted) return;
+        setRankingStories(data);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setRankingStories([]);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setRankingLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [recommendTab]);
+
+  useEffect(() => {
     if (!searchOpen) {
       setSearchResults([]);
       setSearchLoading(false);
@@ -159,10 +188,15 @@ export function HomeScreen() {
     void handlePressStory(storyId);
   }, [handlePressStory]);
 
-  const rankedStories = useMemo(
-    () => sortByReaders(featuredStories),
-    [featuredStories],
-  );
+  const rankedStories = useMemo((): FeaturedStory[] => {
+    if (recommendTab === 'ranking') {
+      return rankingStories.map((story) => ({
+        ...story,
+        followers: story.views,
+      }));
+    }
+    return featuredStories;
+  }, [recommendTab, rankingStories, featuredStories]);
 
   const gridRows = useMemo(() => {
     const rows: Story[][] = [];

@@ -18,7 +18,7 @@ import { CommentSection } from '../components/story/CommentSection';
 import { StoryActionBar } from '../components/story/StoryActionBar';
 import { StoryHero } from '../components/story/StoryHero';
 import { StoryOverview } from '../components/story/StoryOverview';
-import { StoryRatingRow, StoryStatsBar } from '../components/story/StoryStatsBar';
+import { StoryStatsBar } from '../components/story/StoryStatsBar';
 import { getAuthToken } from '../services/authService';
 import { getReadingHistory, recordReadingHistory } from '../services/readingHistoryService';
 import { fetchStoryDetail } from '../services/seriesService';
@@ -150,6 +150,17 @@ export function StoryDetailScreen() {
     [navigateToReader],
   );
 
+  const handleVoteSuccess = useCallback((seriesId: string, averageScore: number, totalVotes: number) => {
+    setStory((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        rating: averageScore,
+        ratingCount: totalVotes,
+      };
+    });
+  }, []);
+
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setShowTopFab(event.nativeEvent.contentOffset.y > 320);
   }, []);
@@ -238,18 +249,16 @@ export function StoryDetailScreen() {
       >
         <StoryHero story={story} />
         <StoryStatsBar story={story} />
-        <StoryRatingRow rating={story.rating} />
         <StoryActionBar
           story={story}
           lastReadChapter={lastReadChapter}
           onReadFromStart={handleReadFromStart}
           onContinueReading={handleContinueReading}
-          onNotifyPress={() => console.log('[Navigation] Bật thông báo:', story.id)}
           onLoginRequired={() => setShowLoginModal(true)}
         />
         <StoryOverview story={story} />
         <ChapterList chapters={story.chapters} onChapterPress={handleChapterPress} />
-        <CommentSection comments={story.comments} />
+        <CommentSection story={story} onVoteSuccess={handleVoteSuccess} />
       </ScrollView>
 
       {showTopFab ? (

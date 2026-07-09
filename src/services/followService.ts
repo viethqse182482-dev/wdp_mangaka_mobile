@@ -1,64 +1,80 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Story } from '../types/story';
+import { apiGet, apiPost, apiDelete } from './apiClient';
+import { getAuthToken } from './authService';
+import { FeaturedStory } from '../types/story';
 
-export interface FollowedStory extends Story {
-  followedAt: string;
+interface FollowResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    _id: string;
+    user_id: string;
+    series_id: string;
+    createdAt: string;
+    updatedAt: string;
+  };
 }
 
-const STORAGE_KEY = '@mangaka/followed-stories';
+interface FollowStatusResponse {
+  success: boolean;
+  isFollowing: boolean;
+}
 
-async function readStore(): Promise<FollowedStory[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as FollowedStory[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+interface FollowListResponse {
+  success: boolean;
+  data: (FeaturedStory & { followedAt: string })[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
+
+export async function followSeries(seriesId: string): Promise<void> {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Vui lòng đăng nhập để theo dõi truyện.');
+
+  const response = await apiPost<FollowResponse>(`/follow/${seriesId}`, {}, { token });
+  if (!response.success) {
+    throw new Error(response.message || 'Theo dõi thất bại.');
   }
 }
 
-async function writeStore(stories: FollowedStory[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stories));
+export async function unfollowSeries(seriesId: string): Promise<void> {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Vui lòng đăng nhập để bỏ theo dõi truyện.');
+
+  const response = await apiDelete<FollowResponse>(`/follow/${seriesId}`, { token });
+  if (!response.success) {
+    throw new Error(response.message || 'Bỏ theo dõi thất bại.');
+  }
 }
 
-export async function getFollowedStories(): Promise<FollowedStory[]> {
-  const stories = await readStore();
-  return stories.sort(
-    (a, b) => new Date(b.followedAt).getTime() - new Date(a.followedAt).getTime(),
-  );
-}
+export async function checkFollowStatus(seriesId: string): Promise<boolean> {
+  const token = await getAuthToken();
+  if (!token) return false;
 
-export async function isStoryFollowed(storyId: string): Promise<boolean> {
-  const stories = await readStore();
-  return stories.some((story) => story.id === storyId);
-}
-
-export async function followStory(story: Story): Promise<void> {
-  const stories = await readStore();
-  if (stories.some((item) => item.id === story.id)) return;
-
-  stories.unshift({
-    ...story,
-    followedAt: new Date().toISOString(),
-  });
-
-  await writeStore(stories);
-}
-
-export async function unfollowStory(storyId: string): Promise<void> {
-  const stories = await readStore();
-  await writeStore(stories.filter((story) => story.id !== storyId));
-}
-
-export async function toggleFollowStory(story: Story): Promise<boolean> {
-  const followed = await isStoryFollowed(story.id);
-
-  if (followed) {
-    await unfollowStory(story.id);
+  try {
+    const response = await apiGet<FollowStatusResponse>(`/follow/${seriesId}/status`, { token });
+    return response.isFollowing;
+  } catch {
     return false;
   }
+}
 
-  await followStory(story);
-  return true;
+export async function fetchFollowedSeries(page = 1, limit = 20): Promise<{
+  data: (FeaturedStory & { followedAt: string })[];
+  total: number;
+}> {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Vui lòng đăng nhập.');
+
+  const response = await apiGet<FollowListResponse>('/follow/mine', {
+    token,
+    params: { page, limit },
+  });
+
+  return {
+    data: response.data,
+    total: response.pagination.total,
+  };
 }

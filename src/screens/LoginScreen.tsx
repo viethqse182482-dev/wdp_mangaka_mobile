@@ -9,6 +9,7 @@ import {
 } from '../components/auth/AuthForm';
 import { ApiError } from '../services/apiClient';
 import { login } from '../services/authService';
+import { clearSeriesCache } from '../services/seriesService';
 import { colors, spacing } from '../theme/colors';
 
 export function LoginScreen() {
@@ -31,6 +32,7 @@ export function LoginScreen() {
 
     try {
       await login(trimmedUsername, password);
+      clearSeriesCache();
       const redirectPath =
         typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/';
       router.replace(redirectPath);

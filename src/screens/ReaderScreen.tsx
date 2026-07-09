@@ -18,9 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Chapter, StoryDetail } from '../types/storyDetail';
 import { fetchChapterPages, ChapterDetail } from '../services/chapterService';
-import { fetchMangaDexStoryDetail } from '../services/mangaDexService';
+import { trackSeriesView } from '../services/seriesService';
 import { getStoryDetailById } from '../data/mockStoryDetails';
-import { getStoryById } from '../data/mockStories';
 import { Story } from '../types/story';
 import { colors, spacing } from '../theme/colors';
 
@@ -102,7 +101,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: ReaderScreenProps) {
+export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
   const router = useRouter();
   const { storyId, chapter: chapterParam } = useLocalSearchParams<{
     storyId: string;
@@ -121,7 +120,17 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
 
   const scrollRef = useRef<ScrollView>(null);
 
-  const isMangaDex = effectiveStoryId.startsWith('mdx-');
+  const chapters: Chapter[] = (() => {
+    if (storyDetail) {
+      return storyDetail.chapters;
+    }
+    if (story && 'chapters' in story) {
+      return story.chapters;
+    }
+    return [];
+  })();
+
+  const currentChapterData = chapters.find((c) => c.number === effectiveChapter);
 
   const loadChapter = useCallback(async () => {
     setLoading(true);
@@ -129,10 +138,13 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
     setChapterDetail(null);
 
     try {
+      if (!currentChapterData) {
+        throw new Error('Chapter not found');
+      }
       const detail = await fetchChapterPages(
         effectiveStoryId,
         effectiveChapter,
-        mangaDexChapterId,
+        currentChapterData.id,
       );
       setChapterDetail(detail);
     } catch {
@@ -140,34 +152,32 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
     } finally {
       setLoading(false);
     }
-  }, [effectiveStoryId, effectiveChapter, mangaDexChapterId]);
+  }, [currentChapterData, effectiveStoryId, effectiveChapter]);
 
   useEffect(() => {
     void loadChapter();
   }, [loadChapter]);
 
   useEffect(() => {
-    if (!isMangaDex) return;
-
-    const mangaId = effectiveStoryId.replace('mdx-', '');
-    void fetchMangaDexStoryDetail(effectiveStoryId)
-      .then((detail) => setStoryDetail(detail))
-      .catch(() => {});
-  }, [effectiveStoryId, isMangaDex]);
-
-  const chapters: Chapter[] = (() => {
-    if (isMangaDex && storyDetail) {
-      return storyDetail.chapters;
+    if (effectiveStoryId) {
+      void trackSeriesView(effectiveStoryId);
     }
-    if (story && 'chapters' in story) {
-      return story.chapters;
-    }
-    const s = getStoryDetailById(effectiveStoryId);
-    return s?.chapters ?? [];
-  })();
+  }, [effectiveStoryId]);
 
-  const currentChapterData = chapters.find((c) => c.number === effectiveChapter);
-  const currentChapterId = currentChapterData?.id ?? mangaDexChapterId;
+  useEffect(() => {
+    if (effectiveStoryId) {
+      const fetchDetail = async () => {
+        const { fetchStoryDetail } = await import('../services/seriesService');
+        const detail = await fetchStoryDetail(effectiveStoryId);
+        if (detail) {
+          setStoryDetail(detail);
+        }
+      };
+      void fetchDetail();
+    }
+  }, [effectiveStoryId]);
+
+  const currentChapterId = currentChapterData?.id;
 
   const prevChapter = chapters.find((c) => c.number === effectiveChapter - 1);
   const nextChapter = chapters.find((c) => c.number === effectiveChapter + 1);
@@ -178,12 +188,10 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
 
   const handlePrev = useCallback(() => {
     if (prevChapter) {
-      const path = isMangaDex
-        ? `/read/${effectiveStoryId}/${prevChapter.number}`
-        : `/read/${effectiveStoryId}/${prevChapter.number}`;
+      const path = `/read/${effectiveStoryId}/${prevChapter.number}`;
       router.push(path);
     }
-  }, [prevChapter, effectiveStoryId, isMangaDex, router]);
+  }, [prevChapter, effectiveStoryId, router]);
 
   const handleNext = useCallback(() => {
     if (nextChapter) {
@@ -212,7 +220,6 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
           source={{ uri: url }}
           style={pageStyles.pageImage}
           resizeMode="contain"
-          progressiveRenderingEnabled
         />
       </Pressable>
     ),
@@ -266,9 +273,7 @@ export function ReaderScreen({ story, initialChapter, mangaDexChapterId }: Reade
                 </Pressable>
 
                 <Text style={styles.topTitle} numberOfLines={1}>
-                  {story?.title ??
-                    (isMangaDex ? storyDetail?.title : getStoryDetailById(effectiveStoryId)?.title) ??
-                    ''}
+                  {story?.title ?? storyDetail?.title ?? ''}
                 </Text>
 
                 <Pressable

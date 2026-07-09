@@ -1,12 +1,18 @@
 import { apiGet } from './apiClient';
 import { getAuthToken } from './authService';
-import {
-  fetchFeaturedStoriesFromMangaDex,
-  fetchMangaDexStoryDetail,
-  searchMangaDexStories,
-} from './mangaDexService';
 import { FeaturedStory, Story } from '../types/story';
 import { StoryDetail } from '../types/storyDetail';
+
+export async function trackSeriesView(seriesId: string): Promise<void> {
+  const token = await getAuthToken();
+  if (!token) return;
+
+  try {
+    await apiGet(`/reader/series/${encodeURIComponent(seriesId)}/view`, { token });
+  } catch {
+    // Silent fail - view tracking is not critical
+  }
+}
 
 interface BeAuthor {
   _id?: string;
@@ -142,8 +148,10 @@ function mapBeSeriesToStory(series: BeSeries): Story {
     coverUrl: series.cover_image_url ?? '',
     latestChapter: series.latest_chapter_number ?? series.total_chapters ?? 0,
     updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
-    views: series.views_count ?? 0,
+    views: series.views_count ?? series.view_count ?? 0,
     genres: Array.isArray(series.genre) ? series.genre : [],
+    rating: Number((series.average_score ?? 0).toFixed(1)),
+    ratingCount: series.total_votes ?? 0,
   };
 }
 
@@ -152,7 +160,6 @@ function mapBeSeriesToFeaturedStory(series: BeSeries): FeaturedStory {
   return {
     ...base,
     synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
-    rating: Number(((series.average_score ?? 0)).toFixed(1)),
     followers: series.total_votes ?? 0,
   };
 }
@@ -187,23 +194,6 @@ async function tryFetchBeList(params: SeriesListParams): Promise<Story[] | null>
   }
 }
 
-async function fetchMangaDexListAsStories(params: SeriesListParams): Promise<Story[]> {
-  try {
-    const mangadex = await fetchFeaturedStoriesFromMangaDex(params.limit ?? 20);
-    return mangadex.map((s) => ({
-      id: s.id,
-      title: s.title,
-      coverUrl: s.coverUrl,
-      latestChapter: s.latestChapter,
-      updatedAt: s.updatedAt,
-      views: s.views,
-      genres: s.genres,
-    }));
-  } catch {
-    return [];
-  }
-}
-
 export async function fetchSeriesList(params: SeriesListParams = {}): Promise<SeriesListResult> {
   const cacheKey = JSON.stringify({
     sort: params.sort ?? 'average_score',
@@ -222,13 +212,6 @@ export async function fetchSeriesList(params: SeriesListParams = {}): Promise<Se
     return result;
   }
 
-  const mangadexStories = await fetchMangaDexListAsStories(params);
-  if (mangadexStories.length > 0) {
-    const result: SeriesListResult = { stories: mangadexStories, source: 'mangadex' };
-    setCached(listCache, cacheKey, result);
-    return result;
-  }
-
   const result: SeriesListResult = { stories: [], source: 'empty' };
   setCached(listCache, cacheKey, result);
   return result;
@@ -237,24 +220,14 @@ export async function fetchSeriesList(params: SeriesListParams = {}): Promise<Se
 export async function fetchFeaturedStories(limit = 8): Promise<FeaturedStory[]> {
   const listResult = await fetchSeriesList({ sort: 'average_score', limit });
   if (listResult.stories.length > 0 && listResult.source === 'be') {
-    // BE không trả synopsis/rating đầy đủ trong list, gọi lại MangaDex nếu thiếu để giữ UX feature-card.
-    // Tuy nhiên ưu tiên giữ BE trước — chỉ fallback khi list rỗng.
+    return listResult.stories.map((story) => ({
+      ...story,
+      synopsis: story.synopsis ?? '',
+      rating: story.rating ?? 0,
+      followers: story.views,
+    }));
   }
-  if (listResult.stories.length === 0) {
-    try {
-      return await fetchFeaturedStoriesFromMangaDex(limit);
-    } catch {
-      return [];
-    }
-  }
-
-  // Map tối thiểu từ Story (BE) sang FeaturedStory (BE không có synopsis/rating đầy đủ).
-  return listResult.stories.map((story) => ({
-    ...story,
-    synopsis: '',
-    rating: 0,
-    followers: story.views,
-  }));
+  return [];
 }
 
 export async function searchSeries(query: string, limit = 20): Promise<FeaturedStory[]> {
@@ -270,74 +243,60 @@ export async function searchSeries(query: string, limit = 20): Promise<FeaturedS
     if (matched.length > 0) {
       return matched.map((story) => ({
         ...story,
-        synopsis: '',
-        rating: 0,
+        synopsis: story.synopsis ?? '',
+        rating: story.rating ?? 0,
         followers: story.views,
       }));
     }
   }
-
-  try {
-    return await searchMangaDexStories({ title: trimmed, limit });
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> {
   const cached = getCached(detailCache, id);
   if (cached !== undefined) return cached;
 
-  // 1. Thử BE trước (ưu tiên)
-  if (!id.startsWith('mdx-')) {
-    const token = await getAuthToken();
-    if (token) {
-      try {
-        const detailResp = await apiGet<BeSeriesDetailResponse>(
-          `/reader/series/${encodeURIComponent(id)}`,
-          { token },
-        );
-        const series = detailResp.data;
-        let chapters: BeChapterListItem[] = [];
-        try {
-          const chaptersResp = await apiGet<BeChapterListResponse>(
-            `/reader/series/${encodeURIComponent(id)}/chapters`,
-            { token },
-          );
-          chapters = Array.isArray(chaptersResp.data) ? chaptersResp.data : [];
-        } catch {
-          chapters = [];
-        }
-
-        const detail: StoryDetail = {
-          id: series._id,
-          title: series.name,
-          altName: series.name,
-          coverUrl: series.cover_image_url ?? '',
-          latestChapter: series.latest_chapter_number ?? 0,
-          updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
-          views: series.views_count ?? 0,
-          genres: Array.isArray(series.genre) ? series.genre : [],
-          author: pickAuthorName(series.author_id),
-          status: 'Đang cập nhật',
-          synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
-          rating: Number((series.average_score ?? 0).toFixed(1)),
-          ratingCount: series.total_votes ?? 0,
-          followers: series.total_votes ?? 0,
-          chapters: chapters.map(mapBeChapterToChapterItem),
-          comments: [],
-        };
-        setCached(detailCache, id, detail);
-        return detail;
-      } catch {
-        // fallthrough sang MangaDex
-      }
-    }
+  const token = await getAuthToken();
+  if (!token) {
+    setCached(detailCache, id, null);
+    return null;
   }
 
-  // 2. Fallback MangaDex
   try {
-    const detail = await fetchMangaDexStoryDetail(id);
+    const detailResp = await apiGet<BeSeriesDetailResponse>(
+      `/reader/series/${encodeURIComponent(id)}`,
+      { token },
+    );
+    const series = detailResp.data;
+    let chapters: BeChapterListItem[] = [];
+    try {
+      const chaptersResp = await apiGet<BeChapterListResponse>(
+        `/reader/series/${encodeURIComponent(id)}/chapters`,
+        { token },
+      );
+      chapters = Array.isArray(chaptersResp.data) ? chaptersResp.data : [];
+    } catch {
+      chapters = [];
+    }
+
+    const detail: StoryDetail = {
+      id: series._id,
+      title: series.name,
+      altName: series.name,
+      coverUrl: series.cover_image_url ?? '',
+      latestChapter: series.latest_chapter_number ?? 0,
+      updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
+      views: series.views_count ?? series.view_count ?? 0,
+      genres: Array.isArray(series.genre) ? series.genre : [],
+      author: pickAuthorName(series.author_id),
+      status: 'Đang cập nhật',
+      synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
+      rating: Number((series.average_score ?? 0).toFixed(1)),
+      ratingCount: series.total_votes ?? 0,
+      followers: series.total_votes ?? 0,
+      chapters: chapters.map(mapBeChapterToChapterItem),
+      comments: [],
+    };
     setCached(detailCache, id, detail);
     return detail;
   } catch {
@@ -346,7 +305,6 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
   }
 }
 
-// Helper internal dùng cho các caller cần sort mà BE chưa hỗ trợ
 export async function fetchSeriesByTab(
   tab: 'updates' | 'recommend',
   limit = 24,
@@ -356,30 +314,49 @@ export async function fetchSeriesByTab(
     if (list.stories.length > 0) {
       return list.stories.map((story) => ({
         ...story,
-        synopsis: '',
-        rating: 0,
+        synopsis: story.synopsis ?? '',
+        rating: story.rating ?? 0,
         followers: story.views,
       }));
     }
-    try {
-      return await searchMangaDexStories({ orderBy: 'latestUploadedChapter', limit });
-    } catch {
-      return [];
-    }
+    return [];
   }
 
-  // tab === 'recommend'
   const list = await fetchSeriesList({ sort: 'average_score', limit });
   if (list.stories.length > 0) {
     return list.stories.map((story) => ({
       ...story,
-      synopsis: '',
-      rating: 0,
+      synopsis: story.synopsis ?? '',
+      rating: story.rating ?? 0,
       followers: story.views,
     }));
   }
+  return [];
+}
+
+interface BeRankingResponse {
+  success: boolean;
+  data: BeSeries[];
+  warnings?: Array<{
+    series_id: string;
+    series_name: string;
+    rank: number;
+    average_score: number;
+    message: string;
+  }>;
+}
+
+export async function fetchRanking(period?: string): Promise<Story[]> {
+  const token = await getAuthToken();
+  if (!token) return [];
+
   try {
-    return await fetchFeaturedStoriesFromMangaDex(limit);
+    const response = await apiGet<BeRankingResponse>('/series/ranking', {
+      token,
+      params: period ? { period } : undefined,
+    });
+    if (!response.success || !Array.isArray(response.data)) return [];
+    return response.data.map(mapBeSeriesToStory);
   } catch {
     return [];
   }
@@ -410,16 +387,11 @@ export async function fetchSeriesByFilter(
     }
     return stories.map((story) => ({
       ...story,
-      synopsis: '',
-      rating: 0,
+      synopsis: story.synopsis ?? '',
+      rating: story.rating ?? 0,
       followers: story.views,
     }));
   }
 
-  // Fallback MangaDex — không thể map genreName ↔ MangaDex tag, giữ nguyên filter hiện có
-  try {
-    return await searchMangaDexStories({ title: filters.title, limit });
-  } catch {
-    return [];
-  }
+  return [];
 }

@@ -13,7 +13,6 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Story } from '../../types/story';
 import { colors, radius, spacing } from '../../theme/colors';
-import { FollowButton } from '../library/FollowButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH = SCREEN_WIDTH - spacing.lg * 2;
@@ -62,9 +61,6 @@ export function BannerSlider({ stories, onStoryPress }: BannerSliderProps) {
               colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.9)']}
               style={styles.gradient}
             />
-            <View style={styles.followButton}>
-              <FollowButton story={item} />
-            </View>
             <View style={styles.info}>
               <View style={styles.genreRow}>
                 {item.genres.slice(0, 2).map((genre) => (
@@ -115,18 +111,6 @@ const styles = StyleSheet.create({
   },
   gradient: {
     ...StyleSheet.absoluteFillObject,
-  },
-  followButton: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    zIndex: 2,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   info: {
     position: 'absolute',
