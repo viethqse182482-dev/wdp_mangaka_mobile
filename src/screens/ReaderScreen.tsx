@@ -17,8 +17,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Chapter, StoryDetail } from '../types/storyDetail';
-import { fetchChapterPages, ChapterDetail } from '../services/chapterService';
-import { trackSeriesView } from '../services/seriesService';
+import { fetchChapterPages, trackChapterView, ChapterDetail } from '../services/chapterService';
 import { getStoryDetailById } from '../data/mockStoryDetails';
 import { Story } from '../types/story';
 import { colors, spacing } from '../theme/colors';
@@ -101,6 +100,8 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+const CHAPTER_VIEW_THRESHOLD_MS = 15_000;
+
 export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
   const router = useRouter();
   const { storyId, chapter: chapterParam } = useLocalSearchParams<{
@@ -119,6 +120,7 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
   const [storyDetail, setStoryDetail] = useState<StoryDetail | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const chapters: Chapter[] = (() => {
     if (storyDetail) {
@@ -158,11 +160,42 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
     void loadChapter();
   }, [loadChapter]);
 
+  // Đếm 1 view khi user ở cùng 1 chapter đủ 15 giây kể từ lúc pages load thành công.
+  // - Trong 15s user đọc bao nhiêu page / scroll tới đâu không quan trọng,
+  //   miễn còn ở chapter này và chapter không lỗi thì vẫn tính 1 view.
+  // - Timer reset khi đổi chapter (`currentChapterData.id` đổi) hoặc unmount.
+  // - Lỗi load pages sẽ không gọi API view (chapterDetail = null → early return).
   useEffect(() => {
-    if (effectiveStoryId) {
-      void trackSeriesView(effectiveStoryId);
+    if (viewTimerRef.current) {
+      clearTimeout(viewTimerRef.current);
+      viewTimerRef.current = null;
     }
-  }, [effectiveStoryId]);
+    if (!chapterDetail || !currentChapterData?.id) return;
+
+    const chapterId = currentChapterData.id;
+    const storyId = effectiveStoryId;
+
+    viewTimerRef.current = setTimeout(async () => {
+      viewTimerRef.current = null;
+      const result = await trackChapterView(chapterId);
+      if (!result) return;
+
+      // Cập nhật cache detail của series ngay để khi quay lại StoryDetail thấy số mới.
+      try {
+        const { bumpChapterViewInCache } = await import('../services/seriesService');
+        bumpChapterViewInCache(storyId, chapterId, result.views_count);
+      } catch {
+        // ignore
+      }
+    }, CHAPTER_VIEW_THRESHOLD_MS);
+
+    return () => {
+      if (viewTimerRef.current) {
+        clearTimeout(viewTimerRef.current);
+        viewTimerRef.current = null;
+      }
+    };
+  }, [chapterDetail, currentChapterData?.id, effectiveStoryId]);
 
   useEffect(() => {
     if (effectiveStoryId) {

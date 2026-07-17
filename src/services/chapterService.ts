@@ -1,4 +1,4 @@
-import { apiGet } from './apiClient';
+import { apiGet, apiPost } from './apiClient';
 import { getAuthToken } from './authService';
 
 export interface ChapterPage {
@@ -96,4 +96,42 @@ export async function fetchChapterPages(
     chapterNumber,
     pages,
   };
+}
+
+interface TrackChapterViewResponse {
+  success: boolean;
+  data?: {
+    chapter_id: string;
+    series_id: string;
+    views_count: number;
+  };
+}
+
+/**
+ * Gửi 1 lượt đọc cho chapter.
+ * - Chỉ gọi khi user đã đọc chapter đủ lâu (mặc định ≥ 15s).
+ * - Trả về `views_count` mới để mobile cập nhật cache / UI ngay.
+ * - Lỗi thì silent fail vì view tracking không phải chức năng cốt lõi.
+ */
+export async function trackChapterView(
+  chapterId: string,
+): Promise<{ views_count: number } | null> {
+  if (!chapterId || chapterId.trim().length === 0) return null;
+
+  const token = await getAuthToken();
+  if (!token) return null;
+
+  try {
+    const response = await apiPost<TrackChapterViewResponse>(
+      `/reader/chapters/${encodeURIComponent(chapterId)}/view`,
+      {},
+      { token },
+    );
+    if (response.success && response.data) {
+      return { views_count: response.data.views_count };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

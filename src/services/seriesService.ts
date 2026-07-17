@@ -71,6 +71,7 @@ interface BeChapterListItem {
   chapter_number: number;
   title?: string;
   published_at?: string;
+  views_count?: number;
   views?: number;
 }
 
@@ -81,7 +82,17 @@ interface BeChapterListResponse {
 
 export interface SeriesListParams {
   sort?: 'average_score' | 'views_count' | 'createdAt' | 'updatedAt';
-  genre?: string;
+  /**
+   * Lọc theo genre. Có thể truyền 1 hoặc nhiều (CSV). BE hỗ trợ `?genre=A,B` và `?genre=A&genre=B`.
+   * Nên truyền tên genre khớp whitelist Series.GENRES (casing + dấu).
+   */
+  genre?: string | string[];
+  /**
+   * Lọc theo tag. Có thể truyền 1 hoặc nhiều (CSV). BE hỗ trợ `?tags=A,B`.
+   */
+  tags?: string | string[];
+  /** Tìm theo tên (regex case-insensitive). BE thực hiện. */
+  title?: string;
   page?: number;
   limit?: number;
 }
@@ -120,6 +131,44 @@ export function clearSeriesCache(): void {
   detailCache.clear();
 }
 
+/**
+ * Xoá cache chi tiết của 1 series, dùng khi user quay lại màn StoryDetail
+ * sau khi vừa tăng view 1 chapter.
+ */
+export function invalidateSeriesDetailCache(storyId: string): void {
+  if (!storyId) return;
+  detailCache.delete(storyId);
+}
+
+/**
+ * Cập nhật ngay `views` của 1 chapter trong cache `detailCache`,
+ * đồng thời trả về giá trị mới để component có thể setState ngay.
+ */
+export function bumpChapterViewInCache(
+  storyId: string,
+  chapterId: string,
+  viewsCount: number,
+): StoryDetail | null {
+  if (!storyId || !chapterId) return null;
+  const cached = detailCache.get(storyId);
+  if (!cached || !cached.value) return null;
+
+  let changed = false;
+  const nextChapters = cached.value.chapters.map((c) => {
+    if (c.id === chapterId && c.views !== viewsCount) {
+      changed = true;
+      return { ...c, views: viewsCount };
+    }
+    return c;
+  });
+
+  if (!changed) return cached.value;
+
+  const next: StoryDetail = { ...cached.value, chapters: nextChapters };
+  setCached(detailCache, storyId, next);
+  return next;
+}
+
 function pickAuthorName(author: BeAuthor | string | undefined): string {
   if (!author) return 'Đang cập nhật';
   if (typeof author === 'string') return 'Đang cập nhật';
@@ -148,7 +197,7 @@ function mapBeSeriesToStory(series: BeSeries): Story {
     coverUrl: series.cover_image_url ?? '',
     latestChapter: series.latest_chapter_number ?? series.total_chapters ?? 0,
     updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
-    views: series.views_count ?? series.view_count ?? 0,
+    views: series.views_count ?? 0,
     genres: Array.isArray(series.genre) ? series.genre : [],
     rating: Number((series.average_score ?? 0).toFixed(1)),
     ratingCount: series.total_votes ?? 0,
@@ -157,9 +206,11 @@ function mapBeSeriesToStory(series: BeSeries): Story {
 
 function mapBeSeriesToFeaturedStory(series: BeSeries): FeaturedStory {
   const base = mapBeSeriesToStory(series);
+  // Ép `rating` sang number (FeaturedStory yêu cầu non-optional) và `synopsis` luôn có.
   return {
     ...base,
     synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
+    rating: base.rating ?? 0,
     followers: series.total_votes ?? 0,
   };
 }
@@ -169,7 +220,7 @@ function mapBeChapterToChapterItem(chapter: BeChapterListItem) {
     id: chapter._id,
     number: chapter.chapter_number,
     releasedAt: relativeTimeFromIso(chapter.published_at),
-    views: chapter.views ?? 0,
+    views: chapter.views_count ?? chapter.views ?? 0,
   };
 }
 
@@ -177,15 +228,24 @@ async function tryFetchBeList(params: SeriesListParams): Promise<Story[] | null>
   const token = await getAuthToken();
   if (!token) return null;
 
+  // Chuẩn hoá mảng -> CSV để khớp `URLSearchParams.set` (apiGet không hỗ trợ array).
+  const genreParam = normalizeCsvParam(params.genre);
+  const tagsParam = normalizeCsvParam(params.tags);
+  const trimmedTitle = params.title?.trim();
+
+  const requestParams: Record<string, string | number | undefined> = {
+    sort: params.sort ?? 'average_score',
+    page: params.page ?? 1,
+    limit: params.limit ?? 20,
+  };
+  if (genreParam) requestParams.genre = genreParam;
+  if (tagsParam) requestParams.tags = tagsParam;
+  if (trimmedTitle) requestParams.title = trimmedTitle;
+
   try {
     const response = await apiGet<BeSeriesListResponse>('/reader/series', {
       token,
-      params: {
-        sort: params.sort ?? 'average_score',
-        genre: params.genre,
-        page: params.page ?? 1,
-        limit: params.limit ?? 20,
-      },
+      params: requestParams,
     });
     if (!response.success || !Array.isArray(response.data)) return null;
     return response.data.map(mapBeSeriesToStory);
@@ -194,10 +254,25 @@ async function tryFetchBeList(params: SeriesListParams): Promise<Story[] | null>
   }
 }
 
+function normalizeCsvParam(value: string | string[] | undefined): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const arr = Array.isArray(value) ? value : [value];
+  const cleaned = arr
+    .flatMap((v) => String(v).split(','))
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (cleaned.length === 0) return undefined;
+  return cleaned.join(',');
+}
+
 export async function fetchSeriesList(params: SeriesListParams = {}): Promise<SeriesListResult> {
+  const genreParam = normalizeCsvParam(params.genre) ?? '';
+  const tagsParam = normalizeCsvParam(params.tags) ?? '';
   const cacheKey = JSON.stringify({
     sort: params.sort ?? 'average_score',
-    genre: params.genre ?? '',
+    genre: genreParam,
+    tags: tagsParam,
+    title: params.title?.trim() ?? '',
     page: params.page ?? 1,
     limit: params.limit ?? 20,
   });
@@ -222,7 +297,7 @@ export async function fetchFeaturedStories(limit = 8): Promise<FeaturedStory[]> 
   if (listResult.stories.length > 0 && listResult.source === 'be') {
     return listResult.stories.map((story) => ({
       ...story,
-      synopsis: story.synopsis ?? '',
+      synopsis: '',
       rating: story.rating ?? 0,
       followers: story.views,
     }));
@@ -234,6 +309,18 @@ export async function searchSeries(query: string, limit = 20): Promise<FeaturedS
   const trimmed = query.trim();
   if (!trimmed) return [];
 
+  // Ưu tiên search phía server (BE dùng regex trên `name`).
+  const serverResult = await tryFetchBeList({ title: trimmed, limit });
+  if (serverResult && serverResult.length > 0) {
+    return serverResult.slice(0, limit).map((story) => ({
+      ...story,
+      synopsis: '',
+      rating: story.rating ?? 0,
+      followers: story.views,
+    }));
+  }
+
+  // Fallback: tải batch lớn rồi filter client (giữ để không vỡ khi BE down).
   const beStories = await tryFetchBeList({ limit: 50 });
   if (beStories && beStories.length > 0) {
     const lower = trimmed.toLowerCase();
@@ -243,7 +330,7 @@ export async function searchSeries(query: string, limit = 20): Promise<FeaturedS
     if (matched.length > 0) {
       return matched.map((story) => ({
         ...story,
-        synopsis: story.synopsis ?? '',
+        synopsis: '',
         rating: story.rating ?? 0,
         followers: story.views,
       }));
@@ -286,7 +373,7 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
       coverUrl: series.cover_image_url ?? '',
       latestChapter: series.latest_chapter_number ?? 0,
       updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
-      views: series.views_count ?? series.view_count ?? 0,
+      views: series.views_count ?? 0,
       genres: Array.isArray(series.genre) ? series.genre : [],
       author: pickAuthorName(series.author_id),
       status: 'Đang cập nhật',
@@ -314,7 +401,7 @@ export async function fetchSeriesByTab(
     if (list.stories.length > 0) {
       return list.stories.map((story) => ({
         ...story,
-        synopsis: story.synopsis ?? '',
+        synopsis: '',
         rating: story.rating ?? 0,
         followers: story.views,
       }));
@@ -326,7 +413,7 @@ export async function fetchSeriesByTab(
   if (list.stories.length > 0) {
     return list.stories.map((story) => ({
       ...story,
-      synopsis: story.synopsis ?? '',
+      synopsis: '',
       rating: story.rating ?? 0,
       followers: story.views,
     }));
@@ -364,7 +451,9 @@ export async function fetchRanking(period?: string): Promise<Story[]> {
 
 export interface SeriesSearchFilters {
   title?: string;
-  genre?: string;
+  genre?: string | string[];
+  tags?: string | string[];
+  sort?: SeriesListParams['sort'];
   limit?: number;
 }
 
@@ -372,22 +461,20 @@ export async function fetchSeriesByFilter(
   filters: SeriesSearchFilters = {},
 ): Promise<FeaturedStory[]> {
   const limit = filters.limit ?? 24;
+  const trimmedTitle = filters.title?.trim();
+
   const list = await fetchSeriesList({
-    sort: 'average_score',
+    sort: filters.sort ?? 'average_score',
     genre: filters.genre,
+    tags: filters.tags,
+    title: trimmedTitle || undefined,
     limit,
   });
 
   if (list.stories.length > 0) {
-    let stories = list.stories;
-    const trimmedTitle = filters.title?.trim();
-    if (trimmedTitle) {
-      const lower = trimmedTitle.toLowerCase();
-      stories = stories.filter((s) => s.title.toLowerCase().includes(lower));
-    }
-    return stories.map((story) => ({
+    return list.stories.map((story) => ({
       ...story,
-      synopsis: story.synopsis ?? '',
+      synopsis: '',
       rating: story.rating ?? 0,
       followers: story.views,
     }));

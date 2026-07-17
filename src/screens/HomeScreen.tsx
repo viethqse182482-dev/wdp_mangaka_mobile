@@ -32,19 +32,13 @@ import {
   fetchSeriesList,
   searchSeries,
 } from '../services/seriesService';
+import { sortByReaders, sortByRelevance } from '../utils/storySort';
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = spacing.md;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_ITEM_WIDTH =
   (SCREEN_WIDTH - spacing.lg * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-
-function sortByReaders(stories: FeaturedStory[]): FeaturedStory[] {
-  return [...stories].sort((a, b) => {
-    if (b.views !== a.views) return b.views - a.views;
-    return b.rating - a.rating;
-  });
-}
 
 export function HomeScreen() {
   const router = useRouter();
@@ -163,7 +157,7 @@ export function HomeScreen() {
       searchSeries(keyword, 8)
         .then((data) => {
           if (!mounted) return;
-          setSearchResults(sortByReaders(data));
+          setSearchResults(sortByRelevance(data, keyword));
         })
         .catch(() => {
           if (!mounted) return;

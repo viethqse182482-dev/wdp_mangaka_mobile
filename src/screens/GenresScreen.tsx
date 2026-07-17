@@ -19,11 +19,12 @@ import { AccountDrawer } from '../components/home/AccountDrawer';
 import { BottomTabBar } from '../components/home/BottomTabBar';
 import { StoryFeaturedCard } from '../components/home/StoryFeaturedCard';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
-import { fetchGenres } from '../services/genreService';
+import { fetchGenres, fetchTags } from '../services/genreService';
 import { fetchSeriesByFilter, searchSeries } from '../services/seriesService';
 import { Genre } from '../types/genre';
 import { FeaturedStory } from '../types/story';
 import { colors, spacing } from '../theme/colors';
+import { sortByRelevance } from '../utils/storySort';
 
 interface FilterOption {
   id: string;
@@ -95,7 +96,10 @@ export function GenresScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [keyword, setKeyword] = useState('');
   const [genres, setGenres] = useState<Genre[]>([]);
-  const [selectedGenreIds, setSelectedGenreIds] = useState<string[]>([]);
+  // Lưu cả object Genre để có sẵn `name` gửi BE (slug `id` chỉ dùng làm key ổn định).
+  const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedSort, setSelectedSort] = useState('average_score');
   const [stories, setStories] = useState<FeaturedStory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +111,7 @@ export function GenresScreen() {
   const [resultListTopY, setResultListTopY] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [genreExpanded, setGenreExpanded] = useState(true);
+  const [tagExpanded, setTagExpanded] = useState(true);
   const [sortExpanded, setSortExpanded] = useState(true);
 
   const {
@@ -117,8 +122,18 @@ export function GenresScreen() {
     loginPromptModal,
   } = useMainTabNavigation('genres');
 
-  const toggleMultiSelect = useCallback((id: string, selected: string[], setFn: (value: string[]) => void) => {
-    setFn(selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id]);
+  const toggleGenre = useCallback((genre: Genre) => {
+    setSelectedGenres((prev) =>
+      prev.some((g) => g.id === genre.id)
+        ? prev.filter((g) => g.id !== genre.id)
+        : [...prev, genre],
+    );
+  }, []);
+
+  const toggleTag = useCallback((tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
   }, []);
 
   const loadFilters = useCallback(async () => {
@@ -126,8 +141,12 @@ export function GenresScreen() {
     setError(null);
 
     try {
-      const data = await fetchGenres();
-      setGenres(data);
+      const [genreList, tagList] = await Promise.all([
+        fetchGenres(),
+        fetchTags(),
+      ]);
+      setGenres(genreList);
+      setTags(tagList);
     } catch {
       setError('Không tải được bộ lọc thể loại.');
     } finally {
@@ -139,24 +158,30 @@ export function GenresScreen() {
     setSearching(true);
     setHasAppliedFilters(true);
     setGenreExpanded(false);
+    setTagExpanded(false);
     setSortExpanded(false);
     setError(null);
 
     try {
-      const selectedGenre = selectedGenreIds.length > 0 ? selectedGenreIds[0] : undefined;
+      const genreNames = selectedGenres.map((g) => g.name);
+      const trimmedKeyword = keyword.trim();
       const data = await fetchSeriesByFilter({
-        title: keyword,
-        genre: selectedGenre,
+        title: trimmedKeyword || undefined,
+        genre: genreNames.length > 0 ? genreNames : undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
+        sort: selectedSort as 'average_score' | 'views_count' | 'createdAt' | 'updatedAt',
         limit: 60,
       });
-      setStories(data);
+      // Khi user tìm theo từ khóa, ưu tiên sort theo relevance
+      // để truyện khớp tên hiển thị sát lên đầu, bất kể sort tiêu chí.
+      setStories(trimmedKeyword ? sortByRelevance(data, trimmedKeyword) : data);
       setResultPage(1);
     } catch {
       setError('Không thể tìm truyện. Vui lòng thử lại.');
     } finally {
       setSearching(false);
     }
-  }, [keyword, selectedGenreIds]);
+  }, [keyword, selectedGenres, selectedTags, selectedSort]);
 
   useEffect(() => {
     void loadFilters();
@@ -176,7 +201,7 @@ export function GenresScreen() {
       searchSeries(query, 8)
         .then((data) => {
           if (!mounted) return;
-          setSuggestStories(data);
+          setSuggestStories(sortByRelevance(data, query));
         })
         .catch(() => {
           if (!mounted) return;
@@ -197,6 +222,11 @@ export function GenresScreen() {
   const genreOptions = useMemo(
     () => genres.map((genre) => ({ id: genre.id, label: genre.name })),
     [genres],
+  );
+
+  const tagOptions = useMemo(
+    () => tags.map((tag) => ({ id: tag, label: tag })),
+    [tags],
   );
 
   const columnWidth = useMemo(() => {
@@ -320,8 +350,43 @@ export function GenresScreen() {
               <FilterCheckboxGrid
                 options={genreOptions}
                 columnWidth={columnWidth}
-                checked={(id) => selectedGenreIds.includes(id)}
-                onToggle={(id) => toggleMultiSelect(id, selectedGenreIds, setSelectedGenreIds)}
+                checked={(id) => selectedGenres.some((g) => g.id === id)}
+                onToggle={(id) => {
+                  const found = genres.find((g) => g.id === id);
+                  if (found) toggleGenre(found);
+                }}
+              />
+            )}
+          </View>
+        ) : null}
+
+        <View style={styles.sectionHeader}>
+          <Pressable
+            onPress={() => setTagExpanded((prev) => !prev)}
+            style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
+          >
+            <Text style={styles.sectionTitle}>Tag</Text>
+            <Ionicons
+              name={tagExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={colors.textPrimary}
+            />
+          </Pressable>
+        </View>
+        {tagExpanded ? (
+          <View style={styles.groupBox}>
+            {loading ? (
+              <View style={styles.loadingInline}>
+                <ActivityIndicator color={colors.accent} />
+              </View>
+            ) : tagOptions.length === 0 ? (
+              <Text style={styles.searchHint}>Chưa có tag nào.</Text>
+            ) : (
+              <FilterCheckboxGrid
+                options={tagOptions}
+                columnWidth={columnWidth}
+                checked={(id) => selectedTags.includes(id)}
+                onToggle={toggleTag}
               />
             )}
           </View>

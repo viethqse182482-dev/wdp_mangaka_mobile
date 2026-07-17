@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
@@ -21,7 +21,10 @@ import { StoryOverview } from '../components/story/StoryOverview';
 import { StoryStatsBar } from '../components/story/StoryStatsBar';
 import { getAuthToken } from '../services/authService';
 import { getReadingHistory, recordReadingHistory } from '../services/readingHistoryService';
-import { fetchStoryDetail } from '../services/seriesService';
+import {
+  fetchStoryDetail,
+  invalidateSeriesDetailCache,
+} from '../services/seriesService';
 import { StoryDetail } from '../types/storyDetail';
 import { Chapter } from '../types/storyDetail';
 import { Story } from '../types/story';
@@ -60,23 +63,12 @@ export function StoryDetailScreen() {
 
   useEffect(() => {
     if (!authChecked || typeof id !== 'string') return;
-
-    void getReadingHistory().then((entries) => {
-      const entry = entries.find((e) => e.id === id);
-      if (entry) {
-        setLastReadChapter(entry.lastReadChapter);
-      }
-    });
-  }, [authChecked, id]);
-
-  useEffect(() => {
-    if (!authChecked || typeof id !== 'string') return;
-
     let mounted = true;
     setLoadingDetail(true);
     setDetailError(false);
     setStory(null);
 
+    // Lần đầu focus mới nên fetch; lần sau useFocusEffect sẽ lo việc refresh.
     fetchStoryDetail(id)
       .then((detail) => {
         if (!mounted) return;
@@ -98,6 +90,38 @@ export function StoryDetailScreen() {
     return () => {
       mounted = false;
     };
+  }, [authChecked, id]);
+
+  // Mỗi khi quay lại màn hình này (ví dụ từ Reader), xoá cache detail của series
+  // để lần render tiếp theo fetch lại → lượt xem mới hiển thị ngay.
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof id !== 'string' || !authChecked) return;
+      invalidateSeriesDetailCache(id);
+      let active = true;
+      fetchStoryDetail(id)
+        .then((detail) => {
+          if (!active || !detail) return;
+          setStory(detail);
+        })
+        .catch(() => {
+          // ignore - đã có state lỗi riêng từ useEffect phía trên
+        });
+      return () => {
+        active = false;
+      };
+    }, [id, authChecked]),
+  );
+
+  // Đọc `last_read_chapter` từ lịch sử đọc (server) để hiển thị "Tiếp tục đọc".
+  useEffect(() => {
+    if (!authChecked || typeof id !== 'string') return;
+    void getReadingHistory().then((entries) => {
+      const entry = entries.find((e) => e.id === id);
+      if (entry) {
+        setLastReadChapter(entry.lastReadChapter);
+      }
+    });
   }, [authChecked, id]);
 
   const handleLoginFromModal = useCallback(() => {
