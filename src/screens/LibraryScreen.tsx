@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -124,6 +124,7 @@ function AuthorsEmpty() {
 }
 
 export function LibraryScreen() {
+  const router = useRouter();
   const { openStory, loginPromptModal } = useStoryNavigation();
   const {
     handleTabPress,
@@ -207,6 +208,13 @@ export function LibraryScreen() {
     [openStory],
   );
 
+  const handleAuthorPress = useCallback(
+    (authorId: string) => {
+      router.push(`/author/${encodeURIComponent(authorId)}`);
+    },
+    [router],
+  );
+
   const handleRemoveFromBookshelf = useCallback(async (seriesId: string) => {
     try {
       await removeFromBookshelf(seriesId);
@@ -253,9 +261,10 @@ export function LibraryScreen() {
       <FollowedAuthorRowWithUnfollow
         item={item}
         onUnfollow={handleUnfollowAuthor}
+        onPress={handleAuthorPress}
       />
     ),
-    [handleUnfollowAuthor],
+    [handleUnfollowAuthor, handleAuthorPress],
   );
 
   const renderSeparator = useCallback(
@@ -476,21 +485,17 @@ function FollowedSeriesRow({ item, onPress }: FollowedSeriesRowProps) {
 interface FollowedAuthorRowWithUnfollowProps {
   item: FollowedAuthor;
   onUnfollow: (authorId: string) => void;
+  onPress: (authorId: string) => void;
 }
 
 function FollowedAuthorRowWithUnfollow({
   item,
   onUnfollow,
+  onPress,
 }: FollowedAuthorRowWithUnfollowProps) {
   const authorId = String(item.author_id?._id ?? item.author_id);
   return (
-    <FollowedAuthorRow
-      item={item}
-      onPress={() => {
-        // Tác giả là compact button row — không navigate story ở đây.
-        // Có thể mở trang tác giả trong tương lai.
-      }}
-    />
+    <FollowedAuthorRow item={item} onPress={onPress} />
   );
 }
 

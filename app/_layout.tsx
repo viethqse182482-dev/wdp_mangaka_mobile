@@ -50,6 +50,14 @@ export default function RootLayout() {
               headerTintColor: colors.textPrimary,
             }}
           />
+          <Stack.Screen
+            name="author/[authorId]"
+            options={{
+              headerShown: false,
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
         </Stack>
       </AppProviders>
     </SafeAreaProvider>

@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { StoryDetail } from '../../types/storyDetail';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface StoryOverviewProps {
   story: StoryDetail;
+  onAuthorPress?: () => void;
 }
 
-export function StoryOverview({ story }: StoryOverviewProps) {
+export function StoryOverview({ story, onAuthorPress }: StoryOverviewProps) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{story.title}</Text>
@@ -28,18 +29,36 @@ export function StoryOverview({ story }: StoryOverviewProps) {
         <View style={styles.divider} />
 
         <InfoRow label="TÊN KHÁC" value={story.altName} />
-        <InfoRow label="TÁC GIẢ" value={story.author} />
+        <InfoRow label="TÁC GIẢ" value={story.author} onPress={onAuthorPress} />
         <InfoRow label="TRẠNG THÁI" value={story.status} />
       </View>
     </View>
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
+  const content = (
+    <Text
+      style={[
+        styles.infoValue,
+        onPress && styles.infoValueLink,
+      ]}
+      numberOfLines={2}
+    >
+      {value}
+    </Text>
+  );
+
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}:</Text>
-      <Text style={styles.infoValue}>{value}</Text>
+      {onPress ? (
+        <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
+          {content}
+        </Pressable>
+      ) : (
+        content
+      )}
     </View>
   );
 }
@@ -118,5 +137,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     flex: 1,
+  },
+  infoValueLink: {
+    color: colors.accent,
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

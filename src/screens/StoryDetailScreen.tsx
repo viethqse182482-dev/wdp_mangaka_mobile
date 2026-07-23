@@ -174,6 +174,12 @@ export function StoryDetailScreen() {
     [navigateToReader],
   );
 
+  const handleAuthorPress = useCallback(() => {
+    if (story?.authorId) {
+      router.push(`/author/${encodeURIComponent(story.authorId)}`);
+    }
+  }, [story?.authorId, router]);
+
   const handleVoteSuccess = useCallback((seriesId: string, averageScore: number, totalVotes: number) => {
     setStory((current) => {
       if (!current) return current;
@@ -282,7 +288,7 @@ export function StoryDetailScreen() {
           onContinueReading={handleContinueReading}
           onLoginRequired={() => setShowLoginModal(true)}
         />
-        <StoryOverview story={story} />
+        <StoryOverview story={story} onAuthorPress={handleAuthorPress} />
         <ChapterList chapters={story.chapters} onChapterPress={handleChapterPress} />
         <CommentSection story={story} onVoteSuccess={handleVoteSuccess} />
       </ScrollView>
