@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 10,
     fontWeight: '700',
+    fontFamily: 'Roboto-Bold',
   },
   ratingBadge: {
     position: 'absolute',
@@ -99,6 +100,7 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 10,
     fontWeight: '700',
+    fontFamily: 'Roboto-Bold',
   },
   title: {
     color: colors.textPrimary,
@@ -106,6 +108,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
     minHeight: 36,
+    fontFamily: 'Roboto-Medium',
   },
   metaRow: {
     marginTop: 3,
@@ -117,10 +120,12 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 11,
     fontWeight: '600',
+    fontFamily: 'Roboto-Medium',
   },
   updatedAt: {
     color: colors.textMuted,
     fontSize: 11,
+    fontFamily: 'Roboto-Regular',
   },
   updatedAtSmall: {
     flex: 1,

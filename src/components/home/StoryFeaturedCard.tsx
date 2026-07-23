@@ -107,6 +107,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: '500',
+    fontFamily: 'Roboto-Medium',
   },
   title: {
     color: colors.textPrimary,
@@ -114,6 +115,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
     marginBottom: spacing.xs,
+    fontFamily: 'Roboto-Bold',
   },
   genreRow: {
     flexDirection: 'row',
@@ -133,6 +135,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
+    fontFamily: 'Roboto-Medium',
   },
   synopsis: {
     color: colors.textMuted,
@@ -145,6 +148,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.3,
+    fontFamily: 'Roboto-Bold',
   },
   pressed: {
     opacity: 0.85,

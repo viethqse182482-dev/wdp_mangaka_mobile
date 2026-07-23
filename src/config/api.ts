@@ -3,6 +3,13 @@ export const API_BASE_URL =
 
 export const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN ?? '';
 
+/**
+ * URL của Socket.IO server. Mặc định lấy từ cùng host với REST API
+ * nhưng có thể override bằng EXPO_PUBLIC_SOCKET_URL.
+ */
+export const SOCKET_URL =
+  process.env.EXPO_PUBLIC_SOCKET_URL ?? API_BASE_URL;
+
 export class ApiError extends Error {
   status: number;
 

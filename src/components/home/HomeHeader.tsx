@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { NotificationBell } from './NotificationBell';
 import { colors, spacing } from '../../theme/colors';
 
 interface HomeHeaderProps {
@@ -28,6 +29,7 @@ export function HomeHeader({ onSearchPress, onHistoryPress }: HomeHeaderProps) {
         >
           <Ionicons name="search-outline" size={22} color={colors.white} />
         </Pressable>
+        <NotificationBell />
         <Pressable
           onPress={onHistoryPress}
           style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}

@@ -466,6 +466,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.2,
+    fontFamily: 'Roboto-Bold',
   },
   tabTextActive: {
     color: colors.accent,
@@ -481,6 +482,7 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontFamily: 'Roboto-Regular',
   },
   bottomSpacer: {
     height: spacing.lg,

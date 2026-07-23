@@ -1,35 +1,22 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiGet, apiPost, apiDelete } from './apiClient';
+import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import { getAuthToken } from './authService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ────────────────────────────────────────────────────────────────────────────
+//   LOCAL CACHE — cache nhanh để UI render trước khi gọi API server
+// ────────────────────────────────────────────────────────────────────────────
 const NOTIFICATION_STORAGE_KEY = '@mangaka/notification-subscriptions';
 
-interface NotificationSubscription {
+export interface LocalSubscription {
   seriesId: string;
   seriesTitle: string;
   subscribedAt: string;
 }
 
-interface NotificationStatusResponse {
-  success: boolean;
-  isSubscribed: boolean;
-}
-
-interface NotificationSubscribeResponse {
-  success: boolean;
-  message: string;
-}
-
-interface NotificationCheckResponse {
-  success: boolean;
-  isSubscribed: boolean;
-}
-
-/** Local cache for fast UI updates without API calls */
-export async function getLocalSubscriptions(): Promise<NotificationSubscription[]> {
+async function getLocalSubscriptions(): Promise<LocalSubscription[]> {
   try {
     const raw = await AsyncStorage.getItem(NOTIFICATION_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    return raw ? (JSON.parse(raw) as LocalSubscription[]) : [];
   } catch {
     return [];
   }
@@ -50,17 +37,70 @@ async function removeLocalSubscription(seriesId: string): Promise<void> {
   await AsyncStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(filtered));
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+//   TYPES — mirror BE response shape
+// ────────────────────────────────────────────────────────────────────────────
+export interface NotificationItem {
+  _id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read?: boolean;
+  related_entity_type?: string;
+  related_entity_id?: string;
+  meta?: {
+    series_id?: string;
+    series_name?: string;
+    chapter_id?: string;
+    chapter_number?: number;
+    author_id?: string;
+  };
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  success: boolean;
+  data: NotificationItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
+
+export interface UnreadCountResponse {
+  success: boolean;
+  count: number;
+}
+
+export interface SubscribeStatusResponse {
+  success: boolean;
+  isSubscribed: boolean;
+  data: unknown | null;
+}
+
+export interface GenericResponse {
+  success: boolean;
+  message?: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//   HELPERS
+// ────────────────────────────────────────────────────────────────────────────
 async function requireToken(): Promise<string> {
   const token = await getAuthToken();
   if (!token) throw 'UNAUTHENTICATED';
   return token;
 }
 
-/** Check server-side subscription status */
+// ────────────────────────────────────────────────────────────────────────────
+//   SUBSCRIBE / UNSUBSCRIBE
+// ────────────────────────────────────────────────────────────────────────────
 export async function checkNotificationStatus(seriesId: string): Promise<boolean> {
   try {
     const token = await requireToken();
-    const response = await apiGet<NotificationCheckResponse>(
+    const response = await apiGet<SubscribeStatusResponse>(
       `/notifications/${encodeURIComponent(seriesId)}/status`,
       { token },
     );
@@ -70,14 +110,12 @@ export async function checkNotificationStatus(seriesId: string): Promise<boolean
   }
 }
 
-/** Subscribe to notifications for new chapters */
 export async function subscribeNotification(
   seriesId: string,
   seriesTitle: string,
 ): Promise<void> {
   const token = await requireToken();
-
-  const response = await apiPost<NotificationSubscribeResponse>(
+  const response = await apiPost<GenericResponse>(
     `/notifications/${encodeURIComponent(seriesId)}/subscribe`,
     {},
     { token },
@@ -90,11 +128,9 @@ export async function subscribeNotification(
   await saveLocalSubscription(seriesId, seriesTitle);
 }
 
-/** Unsubscribe from notifications */
 export async function unsubscribeNotification(seriesId: string): Promise<void> {
   const token = await requireToken();
-
-  const response = await apiDelete<{ success: boolean; message: string }>(
+  const response = await apiDelete<GenericResponse>(
     `/notifications/${encodeURIComponent(seriesId)}/subscribe`,
     { token },
   );
@@ -106,13 +142,51 @@ export async function unsubscribeNotification(seriesId: string): Promise<void> {
   await removeLocalSubscription(seriesId);
 }
 
-/** Check local cache first, then fall back to server */
 export async function isSubscribedToNotification(seriesId: string): Promise<boolean> {
   const localSubs = await getLocalSubscriptions();
   const localMatch = localSubs.find((s) => s.seriesId === seriesId);
   if (localMatch !== undefined) {
     return true;
   }
-
   return checkNotificationStatus(seriesId);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//   NOTIFICATION INBOX
+// ────────────────────────────────────────────────────────────────────────────
+export async function fetchNotifications(
+  page = 1,
+  limit = 20,
+  opts: { unreadOnly?: boolean; type?: string } = {},
+): Promise<NotificationListResponse> {
+  const token = await requireToken();
+  return apiGet<NotificationListResponse>('/notifications', {
+    token,
+    params: {
+      page,
+      limit,
+      unreadOnly: opts.unreadOnly ? 'true' : undefined,
+      type: opts.type,
+    },
+  });
+}
+
+export async function fetchUnreadCount(): Promise<UnreadCountResponse> {
+  const token = await requireToken();
+  return apiGet<UnreadCountResponse>('/notifications/unread-count', { token });
+}
+
+export async function markNotificationAsRead(id: string): Promise<GenericResponse> {
+  const token = await requireToken();
+  return apiPatch<GenericResponse>(`/notifications/${encodeURIComponent(id)}/read`, {}, { token });
+}
+
+export async function markAllNotificationsAsRead(): Promise<GenericResponse> {
+  const token = await requireToken();
+  return apiPatch<GenericResponse>('/notifications/read-all', {}, { token });
+}
+
+export async function deleteNotification(id: string): Promise<GenericResponse> {
+  const token = await requireToken();
+  return apiDelete<GenericResponse>(`/notifications/${encodeURIComponent(id)}`, { token });
 }

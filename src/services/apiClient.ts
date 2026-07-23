@@ -7,7 +7,16 @@ interface ApiRequestOptions {
   params?: Record<string, string | number | undefined>;
   /** Không gửi Authorization header (dùng cho /auth/login, /auth/register) */
   skipAuth?: boolean;
+  /** Override timeout (ms). Mặc định 30s; an toàn cho cold-start của Render free tier. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+const NETWORK_ERROR_MESSAGE =
+  'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+const TIMEOUT_ERROR_MESSAGE =
+  'Máy chủ phản hồi quá lâu, vui lòng thử lại.';
 
 const ERROR_MESSAGES_VI: Record<string, string> = {
   'Invalid username or password': 'Sai tên đăng nhập hoặc mật khẩu.',
@@ -60,29 +69,54 @@ function buildHeaders(token?: string, hasBody = false, skipAuth = false): Record
   return headers;
 }
 
-export async function apiGet<T>(
+async function doFetch(
   path: string,
-  { token = API_TOKEN, params, skipAuth = false }: ApiRequestOptions = {},
-): Promise<T> {
+  init: RequestInit,
+  options: ApiRequestOptions,
+): Promise<Response> {
   const url = new URL(path, API_BASE_URL);
 
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
+  if (options.params) {
+    Object.entries(options.params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         url.searchParams.set(key, String(value));
       }
     });
   }
 
-  let response: Response;
+  const hasBody = init.body !== undefined && init.body !== null;
+  const headers = {
+    ...buildHeaders(options.token, hasBody, options.skipAuth),
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  // AbortController để fetch không bao giờ "treo vĩnh viễn" trên app.
+  // Lần đầu kết nối tới Render HTTPS có thể mất >30s (DNS/TLS/IPv6),
+  // nếu không có timeout thì spinner "Đang xử lý…" xoay mãi không dừng
+  // và người dùng phải đợi native fetch timeout (mặc định ~60s trên Android).
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  );
 
   try {
-    response = await fetch(url.toString(), {
-      headers: buildHeaders(token, false, skipAuth),
-    });
-  } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.', 0);
+    return await fetch(url.toString(), { ...init, headers, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new ApiError(TIMEOUT_ERROR_MESSAGE, 0);
+    }
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
+  } finally {
+    clearTimeout(timeoutHandle);
   }
+}
+
+export async function apiGet<T>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const response = await doFetch(path, { method: 'GET' }, options);
 
   if (!response.ok) {
     throw new ApiError(await parseErrorMessage(response), response.status);
@@ -94,20 +128,13 @@ export async function apiGet<T>(
 export async function apiPost<T>(
   path: string,
   body: unknown,
-  { token, skipAuth = false }: { token?: string; skipAuth?: boolean } = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> {
-  const url = new URL(path, API_BASE_URL);
-  let response: Response;
-
-  try {
-    response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: buildHeaders(token, true, skipAuth),
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.', 0);
-  }
+  const response = await doFetch(
+    path,
+    { method: 'POST', body: JSON.stringify(body) },
+    options,
+  );
 
   if (!response.ok) {
     throw new ApiError(await parseErrorMessage(response), response.status);
@@ -118,28 +145,27 @@ export async function apiPost<T>(
 
 export async function apiDelete<T>(
   path: string,
-  { token = API_TOKEN, params, skipAuth = false }: ApiRequestOptions = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> {
-  const url = new URL(path, API_BASE_URL);
+  const response = await doFetch(path, { method: 'DELETE' }, options);
 
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') {
-        url.searchParams.set(key, String(value));
-      }
-    });
+  if (!response.ok) {
+    throw new ApiError(await parseErrorMessage(response), response.status);
   }
 
-  let response: Response;
+  return response.json() as Promise<T>;
+}
 
-  try {
-    response = await fetch(url.toString(), {
-      method: 'DELETE',
-      headers: buildHeaders(token, false, skipAuth),
-    });
-  } catch {
-    throw new ApiError('Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.', 0);
-  }
+export async function apiPatch<T>(
+  path: string,
+  body: unknown,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const response = await doFetch(
+    path,
+    { method: 'PATCH', body: JSON.stringify(body) },
+    options,
+  );
 
   if (!response.ok) {
     throw new ApiError(await parseErrorMessage(response), response.status);

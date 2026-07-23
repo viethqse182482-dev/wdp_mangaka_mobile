@@ -26,6 +26,7 @@ export interface StoryDetail {
   views: number;
   genres: string[];
   author: string;
+  authorId?: string;
   status: string;
   synopsis: string;
   rating: number;

@@ -142,12 +142,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     lineHeight: 26,
+    fontFamily: 'Roboto-Bold',
   },
   chapter: {
     color: colors.textSecondary,
     fontSize: 13,
     marginTop: spacing.xs,
     fontWeight: '500',
+    fontFamily: 'Roboto-Medium',
   },
   dots: {
     flexDirection: 'row',

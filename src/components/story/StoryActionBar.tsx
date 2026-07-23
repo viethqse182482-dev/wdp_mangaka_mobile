@@ -2,11 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Story } from '../../types/story';
 import { BookshelfButton } from '../library/BookshelfButton';
+import { FollowAuthorButton } from './FollowAuthorButton';
 import { NotificationToggle } from './NotificationToggle';
 import { colors, radius, spacing } from '../../theme/colors';
 
 interface StoryActionBarProps {
   story: Story;
+  authorId?: string;
+  authorName?: string;
   lastReadChapter?: number;
   onReadFromStart?: () => void;
   onContinueReading?: () => void;
@@ -15,6 +18,8 @@ interface StoryActionBarProps {
 
 export function StoryActionBar({
   story,
+  authorId,
+  authorName,
   lastReadChapter,
   onReadFromStart,
   onContinueReading,
@@ -37,6 +42,14 @@ export function StoryActionBar({
           onLoginRequired={onLoginRequired}
         />
       </View>
+
+      {authorId ? (
+        <FollowAuthorButton
+          authorId={authorId}
+          authorName={authorName}
+          onLoginRequired={onLoginRequired}
+        />
+      ) : null}
 
       <View style={styles.readRow}>
         <Pressable

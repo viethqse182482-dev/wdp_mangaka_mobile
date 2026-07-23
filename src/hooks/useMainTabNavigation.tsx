@@ -94,6 +94,12 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
       return;
     }
 
+    if (key === 'notifications') {
+      setAccountDrawerVisible(false);
+      router.push('/notifications');
+      return;
+    }
+
     if (key === 'contact') {
       setAccountDrawerVisible(false);
       router.push('/contact');

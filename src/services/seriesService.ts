@@ -2,6 +2,7 @@ import { apiGet } from './apiClient';
 import { getAuthToken } from './authService';
 import { FeaturedStory, Story } from '../types/story';
 import { StoryDetail } from '../types/storyDetail';
+import { fetchComments } from './commentService';
 
 export async function trackSeriesView(seriesId: string): Promise<void> {
   const token = await getAuthToken();
@@ -366,6 +367,23 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
       chapters = [];
     }
 
+    let comments: StoryDetail['comments'] = [];
+    try {
+      const commentsResult = await fetchComments(id);
+      comments = commentsResult.comments.map((c) => ({
+        id: c.id,
+        username: c.username,
+        badge: c.badge,
+        badgeColor: c.badgeColor,
+        chapterNumber: c.chapterNumber,
+        content: c.content,
+        createdAt: c.createdAt,
+        replyTo: c.replyTo,
+      }));
+    } catch {
+      comments = [];
+    }
+
     const detail: StoryDetail = {
       id: series._id,
       title: series.name,
@@ -376,13 +394,19 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
       views: series.views_count ?? 0,
       genres: Array.isArray(series.genre) ? series.genre : [],
       author: pickAuthorName(series.author_id),
+      authorId:
+        typeof series.author_id === 'object' && series.author_id
+          ? String(series.author_id._id ?? '')
+          : typeof series.author_id === 'string'
+          ? series.author_id
+          : undefined,
       status: 'Đang cập nhật',
       synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
       rating: Number((series.average_score ?? 0).toFixed(1)),
       ratingCount: series.total_votes ?? 0,
       followers: series.total_votes ?? 0,
       chapters: chapters.map(mapBeChapterToChapterItem),
-      comments: [],
+      comments,
     };
     setCached(detailCache, id, detail);
     return detail;

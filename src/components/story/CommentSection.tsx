@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { fetchComments, submitComment } from '../../services/commentService';
 import { VoteSection } from './VoteSection';
 import { StoryComment, StoryDetail } from '../../types/storyDetail';
 import { formatReadTime } from '../../utils/formatReadTime';
@@ -11,31 +12,121 @@ interface CommentSectionProps {
   onVoteSuccess?: (seriesId: string, averageScore: number, totalVotes: number) => void;
 }
 
+const COMMENTS_PER_PAGE = 20;
+
 export function CommentSection({ story, onVoteSuccess }: CommentSectionProps) {
-  const [comments, setComments] = useState(story.comments);
+  const [comments, setComments] = useState<StoryComment[]>(story.comments);
   const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const isFetchingRef = useRef(false);
+  const flatListRef = useRef<FlatList>(null);
+
+  const loadComments = async (pageNum: number, isRefresh = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const result = await fetchComments(story.id, pageNum, COMMENTS_PER_PAGE);
+      const mappedComments: StoryComment[] = result.comments.map((c) => ({
+        id: c.id,
+        username: c.username,
+        badge: c.badge,
+        badgeColor: c.badgeColor,
+        chapterNumber: c.chapterNumber,
+        content: c.content,
+        createdAt: c.createdAt,
+        replyTo: c.replyTo,
+      }));
+
+      if (isRefresh || pageNum === 1) {
+        setComments(mappedComments);
+      } else {
+        setComments((prev) => [...prev, ...mappedComments]);
+      }
+
+      setHasMore(result.comments.length >= COMMENTS_PER_PAGE);
+      setPage(pageNum);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+      isFetchingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    loadComments(1, true);
+  }, [story.id]);
 
   const handleVoteSuccess = (result: { average_score: number; total_votes: number }) => {
     onVoteSuccess?.(story.id, result.average_score, result.total_votes);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const content = draft.trim();
-    if (!content) return;
+    if (!content || loading) return;
 
-    setComments((current) => [
-      {
-        id: `local-${Date.now()}`,
-        username: 'Bạn',
-        badge: 'Độc giả',
-        badgeColor: colors.accent,
-        chapterNumber: story.comments[0]?.chapterNumber ?? 1,
-        content,
-        createdAt: new Date().toISOString(),
-      },
-      ...current,
-    ]);
+    const tempId = `local-${Date.now()}`;
+    const tempComment: StoryComment = {
+      id: tempId,
+      username: 'Bạn',
+      badge: 'Độc giả',
+      badgeColor: colors.accent,
+      chapterNumber: story.comments[0]?.chapterNumber ?? 1,
+      content,
+      createdAt: new Date().toISOString(),
+    };
+
+    setComments((current) => [tempComment, ...current]);
     setDraft('');
+    setLoading(true);
+
+    try {
+      const result = await submitComment(story.id, content, tempComment.chapterNumber);
+      const newComment: StoryComment = {
+        id: result.id,
+        username: result.username,
+        badge: result.badge,
+        badgeColor: result.badgeColor,
+        chapterNumber: result.chapterNumber,
+        content: result.content,
+        createdAt: result.createdAt,
+        replyTo: result.replyTo,
+      };
+
+      setComments((current) =>
+        current.map((c) => (c.id === tempId ? newComment : c)),
+      );
+    } catch (error: any) {
+      console.error('Failed to submit comment:', error);
+      if (error?.message === 'Not authenticated') {
+        Alert.alert('Yêu cầu đăng nhập', 'Vui lòng đăng nhập để gửi bình luận.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadMore = () => {
+    if (!isFetchingRef.current && hasMore) {
+      loadComments(page + 1);
+    }
+  };
+
+  const handleRefresh = () => {
+    setHasMore(true);
+    setPage(1);
+    loadComments(1, true);
   };
 
   return (
@@ -57,18 +148,42 @@ export function CommentSection({ story, onVoteSuccess }: CommentSectionProps) {
           placeholderTextColor={colors.textMuted}
           style={styles.input}
           multiline
+          editable={!loading}
         />
         <Pressable
           onPress={handleSend}
-          style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}
+          disabled={loading}
+          style={({ pressed }) => [
+            styles.sendButton,
+            pressed && styles.pressed,
+            loading && styles.disabled,
+          ]}
         >
-          <Text style={styles.sendText}>GỬI</Text>
+          <Text style={[styles.sendText, loading && styles.disabledText]}>
+            {loading ? '...' : 'GỬI'}
+          </Text>
         </Pressable>
       </View>
 
-      {comments.map((comment) => (
-        <CommentCard key={comment.id} comment={comment} />
-      ))}
+      <FlatList
+        ref={flatListRef}
+        data={comments}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <CommentCard comment={item} />}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        ListEmptyComponent={
+          !loading ? <Text style={styles.emptyText}>Chưa có bình luận nào.</Text> : null
+        }
+        ListFooterComponent={
+          hasMore && comments.length > 0 && !loading ? (
+            <Text style={styles.loadingMore}>Đang tải thêm...</Text>
+          ) : null
+        }
+        scrollEnabled={false}
+      />
     </View>
   );
 }
@@ -213,5 +328,23 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.75,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  disabledText: {
+    color: colors.textMuted,
+  },
+  emptyText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    fontSize: 14,
+    marginVertical: spacing.lg,
+  },
+  loadingMore: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    fontSize: 12,
+    marginVertical: spacing.sm,
   },
 });

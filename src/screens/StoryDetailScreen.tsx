@@ -275,6 +275,8 @@ export function StoryDetailScreen() {
         <StoryStatsBar story={story} />
         <StoryActionBar
           story={story}
+          authorId={story.authorId}
+          authorName={story.author}
           lastReadChapter={lastReadChapter}
           onReadFromStart={handleReadFromStart}
           onContinueReading={handleContinueReading}

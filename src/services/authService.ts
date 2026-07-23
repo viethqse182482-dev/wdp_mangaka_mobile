@@ -41,10 +41,12 @@ export async function clearAuthSession(): Promise<void> {
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
+  // Timeout 30s cho đăng nhập — khi backend bị cold-start quá 30s,
+  // spinner sẽ tắt và hiển thị thông báo rõ ràng thay vì xoay vô tận.
   const response = await apiPost<LoginResponse>(
     '/auth/login',
     { username, password },
-    { skipAuth: true },
+    { skipAuth: true, timeoutMs: 30_000 },
   );
 
   const user = normalizeAuthUser(response.user);

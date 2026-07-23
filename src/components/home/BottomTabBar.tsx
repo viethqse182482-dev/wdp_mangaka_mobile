@@ -66,10 +66,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     fontWeight: '500',
+    fontFamily: 'Roboto-Medium',
   },
   labelActive: {
     color: colors.accent,
     fontWeight: '700',
+    fontFamily: 'Roboto-Bold',
   },
   pressed: {
     opacity: 0.7,

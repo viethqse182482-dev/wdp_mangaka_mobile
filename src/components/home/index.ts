@@ -5,3 +5,4 @@ export { StoryGridCard } from './StoryGridCard';
 export { StoryHorizontalCard } from './StoryHorizontalCard';
 export { BottomTabBar } from './BottomTabBar';
 export { AccountDrawer } from './AccountDrawer';
+export { NotificationBell } from './NotificationBell';

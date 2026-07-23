@@ -25,6 +25,12 @@ export interface BookshelfSeries {
 export interface BookshelfItem {
   _id: string;
   added_at: string;
+  /** BE mới enrich: chapter cuối cùng user đã đọc (0 nếu chưa đọc). */
+  last_read_chapter?: number;
+  /** BE mới enrich: user có subscribe nhận notify cho series này không. */
+  subscribed?: boolean;
+  /** BE mới enrich: số chapter mới chưa đọc = latest_chapter_number - last_read_chapter. */
+  new_chapters_count?: number;
   series: BookshelfSeries;
 }
 

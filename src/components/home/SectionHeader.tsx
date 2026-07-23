@@ -46,11 +46,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
+    fontFamily: 'Roboto-Bold',
   },
   subtitle: {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
+    fontFamily: 'Roboto-Regular',
   },
   seeAll: {
     flexDirection: 'row',
@@ -61,6 +63,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: 'Roboto-Medium',
   },
   pressed: {
     opacity: 0.7,
