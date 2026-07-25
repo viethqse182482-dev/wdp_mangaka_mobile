@@ -1,6 +1,18 @@
+/**
+ * RegisterScreen — form đăng ký Reader.
+ *
+ * Validate:
+ *  - Họ tên: bắt buộc, 2-60 ký tự
+ *  - Username: 3-30 ký tự, chỉ chữ, số, _
+ *  - Email: regex chuẩn + TLD >= 2 ký tự
+ *  - Số điện thoại VN: 0[3|5|7|8|9] + 8 số
+ *  - Mật khẩu: >= 6 ký tự, phải khớp confirm
+ *
+ * Validation chạy real-time khi blur từng field, hiển thị error inline.
+ */
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 import {
   AuthErrorBanner,
   AuthPrimaryButton,
@@ -9,9 +21,65 @@ import {
 } from '../components/auth/AuthForm';
 import { ApiError } from '../services/apiClient';
 import { login, register } from '../services/authService';
-import { colors, spacing } from '../theme/colors';
+import { colors, spacing, typography } from '../theme/colors';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
+const PHONE_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+
+type FieldKey = 'fullName' | 'username' | 'email' | 'phoneNumber' | 'password' | 'confirmPassword';
+
+interface FieldErrors {
+  fullName?: string;
+  username?: string;
+  email?: string;
+  phoneNumber?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+function validateField(key: FieldKey, values: {
+  fullName: string;
+  username: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+  confirmPassword: string;
+}): string | undefined {
+  switch (key) {
+    case 'fullName':
+      if (!values.fullName.trim()) return 'Vui lòng nhập họ và tên.';
+      if (values.fullName.trim().length < 2) return 'Họ tên quá ngắn.';
+      if (values.fullName.trim().length > 60) return 'Họ tên quá dài (tối đa 60 ký tự).';
+      return undefined;
+    case 'username':
+      if (!values.username.trim()) return 'Vui lòng nhập tên đăng nhập.';
+      if (!USERNAME_REGEX.test(values.username.trim())) {
+        return 'Tên đăng nhập 3-30 ký tự, chỉ gồm chữ, số, dấu gạch dưới.';
+      }
+      return undefined;
+    case 'email':
+      if (!values.email.trim()) return 'Vui lòng nhập email.';
+      if (!EMAIL_REGEX.test(values.email.trim())) return 'Email không hợp lệ.';
+      return undefined;
+    case 'phoneNumber':
+      if (!values.phoneNumber.trim()) return 'Vui lòng nhập số điện thoại.';
+      if (!PHONE_REGEX.test(values.phoneNumber.trim())) {
+        return 'Số điện thoại không hợp lệ (VD: 0912345678).';
+      }
+      return undefined;
+    case 'password':
+      if (!values.password) return 'Vui lòng nhập mật khẩu.';
+      if (values.password.length < 6) return 'Mật khẩu phải có ít nhất 6 ký tự.';
+      return undefined;
+    case 'confirmPassword':
+      if (!values.confirmPassword) return 'Vui lòng xác nhận mật khẩu.';
+      if (values.confirmPassword !== values.password) return 'Mật khẩu xác nhận không khớp.';
+      return undefined;
+    default:
+      return undefined;
+  }
+}
 
 export function RegisterScreen() {
   const router = useRouter();
@@ -23,27 +91,48 @@ export function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  const validate = useCallback(() => {
-    if (!fullName.trim() || !username.trim() || !email.trim() || !phoneNumber.trim()) {
-      return 'Vui lòng điền đầy đủ thông tin.';
-    }
-    if (!EMAIL_REGEX.test(email.trim())) {
-      return 'Email không hợp lệ.';
-    }
-    if (password.length < 6) {
-      return 'Mật khẩu phải có ít nhất 6 ký tự.';
-    }
-    if (password !== confirmPassword) {
-      return 'Mật khẩu xác nhận không khớp.';
-    }
-    return '';
-  }, [confirmPassword, email, fullName, password, phoneNumber, username]);
+  const confirmRef = useRef<TextInput>(null);
+
+  const values = useMemo(
+    () => ({ fullName, username, email, phoneNumber, password, confirmPassword }),
+    [fullName, username, email, phoneNumber, password, confirmPassword],
+  );
+
+  const validateAll = useCallback((): { ok: boolean; firstInvalid?: FieldKey } => {
+    const next: FieldErrors = {
+      fullName: validateField('fullName', values),
+      username: validateField('username', values),
+      email: validateField('email', values),
+      phoneNumber: validateField('phoneNumber', values),
+      password: validateField('password', values),
+      confirmPassword: validateField('confirmPassword', values),
+    };
+    setFieldErrors(next);
+    const order: FieldKey[] = ['fullName', 'username', 'email', 'phoneNumber', 'password', 'confirmPassword'];
+    const firstInvalid = order.find((k) => Boolean(next[k]));
+    return { ok: !firstInvalid, firstInvalid };
+  }, [values]);
+
+  const onFieldBlur = useCallback(
+    (key: FieldKey) => {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [key]: validateField(key, values),
+      }));
+    },
+    [values],
+  );
 
   const handleRegister = useCallback(async () => {
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
+    const { ok, firstInvalid } = validateAll();
+    if (!ok) {
+      setError(
+        firstInvalid === 'confirmPassword'
+          ? 'Vui lòng kiểm tra lại mật khẩu xác nhận.'
+          : 'Vui lòng kiểm tra lại các trường được đánh dấu.',
+      );
       return;
     }
 
@@ -51,7 +140,7 @@ export function RegisterScreen() {
     setError('');
 
     try {
-      const response = await register({
+      await register({
         username: username.trim(),
         password,
         full_name: fullName.trim(),
@@ -60,15 +149,24 @@ export function RegisterScreen() {
         role: 'Reader',
       });
 
-      Alert.alert('Đăng ký thành công', response.message, [
+      Alert.alert('Đăng ký thành công', 'Tài khoản đã được tạo. Đang đăng nhập...', [
         {
           text: 'Đăng nhập',
           onPress: async () => {
             try {
               await login(username.trim(), password);
               router.replace('/');
-            } catch {
-              router.replace('/login');
+            } catch (loginErr) {
+              const msg =
+                loginErr instanceof ApiError
+                  ? loginErr.message
+                  : 'Đăng nhập tự động thất bại. Vui lòng đăng nhập thủ công.';
+              Alert.alert('Đăng nhập tự động thất bại', msg, [
+                {
+                  text: 'Đăng nhập ngay',
+                  onPress: () => router.replace('/login'),
+                },
+              ]);
             }
           },
         },
@@ -78,7 +176,7 @@ export function RegisterScreen() {
     } finally {
       setLoading(false);
     }
-  }, [email, fullName, password, phoneNumber, router, username, validate]);
+  }, [email, fullName, password, phoneNumber, router, username, validateAll]);
 
   return (
     <AuthScreenLayout
@@ -100,6 +198,14 @@ export function RegisterScreen() {
         icon="id-card-outline"
         value={fullName}
         onChangeText={setFullName}
+        onBlur={() => onFieldBlur('fullName')}
+        error={fieldErrors.fullName}
+        returnKeyType="next"
+        autoCapitalize="words"
+        autoComplete="name"
+        textContentType="name"
+        editable={!loading}
+        accessibilityLabel="Họ và tên"
         placeholder="Nguyễn Văn A"
       />
 
@@ -108,8 +214,15 @@ export function RegisterScreen() {
         icon="person-outline"
         value={username}
         onChangeText={setUsername}
+        onBlur={() => onFieldBlur('username')}
+        error={fieldErrors.username}
         autoCapitalize="none"
         autoCorrect={false}
+        autoComplete="username"
+        textContentType="username"
+        returnKeyType="next"
+        editable={!loading}
+        accessibilityLabel="Tên đăng nhập"
         placeholder="username"
       />
 
@@ -118,8 +231,16 @@ export function RegisterScreen() {
         icon="mail-outline"
         value={email}
         onChangeText={setEmail}
+        onBlur={() => onFieldBlur('email')}
+        error={fieldErrors.email}
         autoCapitalize="none"
+        autoCorrect={false}
         keyboardType="email-address"
+        autoComplete="email"
+        textContentType="emailAddress"
+        returnKeyType="next"
+        editable={!loading}
+        accessibilityLabel="Email"
         placeholder="email@example.com"
       />
 
@@ -128,7 +249,14 @@ export function RegisterScreen() {
         icon="call-outline"
         value={phoneNumber}
         onChangeText={setPhoneNumber}
+        onBlur={() => onFieldBlur('phoneNumber')}
+        error={fieldErrors.phoneNumber}
         keyboardType="phone-pad"
+        autoComplete="tel"
+        textContentType="telephoneNumber"
+        returnKeyType="next"
+        editable={!loading}
+        accessibilityLabel="Số điện thoại"
         placeholder="09xxxxxxxx"
       />
 
@@ -137,17 +265,33 @@ export function RegisterScreen() {
         icon="lock-closed-outline"
         value={password}
         onChangeText={setPassword}
-        isPassword
+        onBlur={() => onFieldBlur('password')}
+        error={fieldErrors.password}
+        autoComplete="password-new"
+        textContentType="newPassword"
+        returnKeyType="next"
+        onSubmitEditing={() => confirmRef.current?.focus()}
+        editable={!loading}
+        accessibilityLabel="Mật khẩu"
         placeholder="Tối thiểu 6 ký tự"
+        isPassword
       />
 
       <AuthTextField
+        ref={confirmRef}
         label="Xác nhận mật khẩu"
         icon="shield-checkmark-outline"
         value={confirmPassword}
         onChangeText={setConfirmPassword}
-        isPassword
+        onBlur={() => onFieldBlur('confirmPassword')}
+        error={fieldErrors.confirmPassword}
+        textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={handleRegister}
+        editable={!loading}
+        accessibilityLabel="Xác nhận mật khẩu"
         placeholder="Nhập lại mật khẩu"
+        isPassword
       />
 
       <AuthPrimaryButton label="Đăng ký" onPress={handleRegister} loading={loading} />
@@ -163,9 +307,11 @@ const styles = StyleSheet.create({
   footerText: {
     color: colors.textSecondary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyMedium,
   },
   footerHighlight: {
-    color: colors.accent,
-    fontWeight: '700',
+    color: colors.accentLight,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
   },
 });

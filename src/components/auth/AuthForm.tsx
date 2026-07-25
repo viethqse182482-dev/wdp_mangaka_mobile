@@ -1,6 +1,17 @@
+/**
+ * AuthForm — bộ primitive dùng chung cho form Auth (Login/Register).
+ *
+ *  - `AuthScreenLayout` — gradient + glow + logo + form card glass
+ *  - `AuthTextField`    — input glass có leading icon + toggle password
+ *  - `AuthPrimaryButton` — CTA gradient với icon
+ *  - `AuthErrorBanner`  — banner lỗi
+ *
+ * Tất cả dùng typography/font Roboto hỗ trợ TV.
+ */
 import { Ionicons } from '@expo/vector-icons';
-import { ReactNode, useState } from 'react';
+import { forwardRef, ReactNode, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,47 +22,48 @@ import {
   TextInputProps,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { GlassCard, GlassTextField, GradientButton } from '../../theme/uiPrimitives';
 
 interface AuthTextFieldProps extends TextInputProps {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   isPassword?: boolean;
+  error?: string | null;
 }
 
-export function AuthTextField({
-  label,
-  icon,
-  isPassword = false,
-  ...inputProps
-}: AuthTextFieldProps) {
+export const AuthTextField = forwardRef<TextInput, AuthTextFieldProps>(function AuthTextField(
+  {
+    label,
+    icon,
+    isPassword = false,
+    error,
+    returnKeyType,
+    ...inputProps
+  },
+  ref,
+) {
   const [visible, setVisible] = useState(false);
+  const resolvedReturnKeyType = returnKeyType ?? (isPassword ? 'go' : 'next');
 
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.inputWrap}>
-        <Ionicons name={icon} size={18} color={colors.textMuted} style={styles.leadingIcon} />
-        <TextInput
-          {...inputProps}
-          secureTextEntry={isPassword && !visible}
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-        />
-        {isPassword ? (
-          <Pressable onPress={() => setVisible((prev) => !prev)} hitSlop={8} style={styles.trailingIcon}>
-            <Ionicons
-              name={visible ? 'eye-off-outline' : 'eye-outline'}
-              size={18}
-              color={colors.textMuted}
-            />
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
+    <GlassTextField
+      ref={ref}
+      label={label}
+      icon={icon}
+      rightIcon={isPassword ? (visible ? 'eye-off-outline' : 'eye-outline') : undefined}
+      onRightIconPress={isPassword ? () => setVisible((p) => !p) : undefined}
+      secureTextEntry={isPassword && !visible}
+      error={error}
+      returnKeyType={resolvedReturnKeyType}
+      containerStyle={{ marginBottom: spacing.md }}
+      {...inputProps}
+    />
   );
-}
+});
 
 interface AuthScreenLayoutProps {
   title: string;
@@ -61,6 +73,8 @@ interface AuthScreenLayoutProps {
   onBackHome?: () => void;
 }
 
+const LOGO_SOURCE = require('../../../assets/images/logonho.jpg');
+
 export function AuthScreenLayout({
   title,
   subtitle,
@@ -69,44 +83,75 @@ export function AuthScreenLayout({
   onBackHome,
 }: AuthScreenLayoutProps) {
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {onBackHome ? (
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={onBackHome}
-            hitSlop={8}
-            style={({ pressed }) => [styles.backHomeButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
-            <Text style={styles.backHomeText}>Trang chủ</Text>
-          </Pressable>
-        </View>
-      ) : null}
+    <View style={styles.root}>
+      <LinearGradient
+        colors={colors.gradSplash}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View pointerEvents="none" style={[styles.glowA]} />
+      <View pointerEvents="none" style={[styles.glowB]} />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.brand}>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoText}>M</Text>
-            </View>
-            <Text style={styles.brandName}>Mangaka</Text>
+      <SafeAreaView style={styles.safeArea}>
+        {onBackHome ? (
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={onBackHome}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.backHomeButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="arrow-back" size={18} color={colors.textPrimary} />
+              <Text style={styles.backHomeText}>Trang chủ</Text>
+            </Pressable>
           </View>
+        ) : null}
 
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.brand}>
+              <View style={styles.logoWrap}>
+                <LinearGradient
+                  colors={colors.gradPrimary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.logoBadge}
+                >
+                  <Image
+                    source={LOGO_SOURCE}
+                    style={styles.logoImage}
+                    contentFit="cover"
+                    transition={250}
+                  />
+                </LinearGradient>
+              </View>
+              <Text style={styles.brandName}>Mangaka</Text>
+              <View style={styles.brandLine} />
+            </View>
 
-          <View style={styles.form}>{children}</View>
-          {footer}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
+
+            <View style={styles.form}>
+              <GlassCard tint="dark" depth={3} radius={radius.xl} style={styles.formCard}>
+                {children}
+              </GlassCard>
+            </View>
+            {footer}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -122,17 +167,17 @@ export function AuthPrimaryButton({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
+    <GradientButton
+      label={label}
+      icon="log-in-outline"
       onPress={onPress}
-      disabled={disabled || loading}
-      style={({ pressed }) => [
-        styles.primaryButton,
-        (disabled || loading) && styles.primaryButtonDisabled,
-        pressed && !disabled && !loading && styles.pressed,
-      ]}
-    >
-      <Text style={styles.primaryButtonText}>{loading ? 'Đang xử lý...' : label}</Text>
-    </Pressable>
+      loading={loading}
+      disabled={disabled}
+      fullWidth
+      size="lg"
+      glow
+      style={{ alignSelf: 'stretch', marginTop: spacing.md }}
+    />
   );
 }
 
@@ -148,9 +193,38 @@ export function AuthErrorBanner({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  glowA: {
+    position: 'absolute',
+    top: -120,
+    right: -100,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.accent,
+    opacity: 0.25,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.7,
+    shadowRadius: 100,
+  },
+  glowB: {
+    position: 'absolute',
+    bottom: -100,
+    left: -120,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.cyan,
+    opacity: 0.18,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.7,
+    shadowRadius: 100,
+  },
+  safeArea: {
+    flex: 1,
   },
   flex: {
     flex: 1,
@@ -171,108 +245,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 4,
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    backgroundColor: colors.glassLight,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
   },
   backHomeText: {
     color: colors.textPrimary,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
     fontWeight: '600',
   },
   brand: {
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
+  logoWrap: {
+    marginBottom: spacing.sm,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+  },
   logoBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
+    width: 76,
+    height: 76,
+    borderRadius: 20,
+    padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
   },
-  logoText: {
-    color: colors.white,
-    fontSize: 24,
-    fontWeight: '800',
+  logoImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 16,
   },
   brandName: {
     color: colors.textPrimary,
     fontSize: 22,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  brandLine: {
+    width: 40,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+    marginTop: spacing.xs,
   },
   title: {
     color: colors.textPrimary,
     fontSize: 26,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
     marginBottom: spacing.xs,
+    letterSpacing: -0.4,
   },
   subtitle: {
     color: colors.textSecondary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyPlatform as string,
     lineHeight: 20,
     marginBottom: spacing.xl,
   },
   form: {
     gap: spacing.md,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  field: {
-    gap: spacing.xs,
-  },
-  label: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    minHeight: 50,
-  },
-  leadingIcon: {
-    marginLeft: spacing.md,
-  },
-  input: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 15,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  trailingIcon: {
-    paddingHorizontal: spacing.md,
-  },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '700',
+  formCard: {
+    padding: spacing.lg,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.35)',
+    backgroundColor: colors.dangerSoft,
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
@@ -281,6 +332,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.danger,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
     lineHeight: 18,
   },
   pressed: {

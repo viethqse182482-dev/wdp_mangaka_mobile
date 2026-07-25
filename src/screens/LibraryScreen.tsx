@@ -1,5 +1,9 @@
+/**
+ * LibraryScreen — Tủ truyện của tôi với GlassSegmentedControl.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -30,7 +34,14 @@ import {
   fetchFollowedAuthors,
   FollowedAuthor,
 } from '../services/followAuthorService';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, typography } from '../theme/colors';
+import {
+  GlassCard,
+  GlassIconButton,
+  GlassListItem,
+  GlassSegmentedControl,
+  GlassSkeleton,
+} from '../theme/uiPrimitives';
 
 type TabKey = 'saved' | 'followed' | 'authors';
 
@@ -39,37 +50,6 @@ const TAB_DEFS: Array<{ key: TabKey; label: string }> = [
   { key: 'followed', label: 'Theo dõi' },
   { key: 'authors', label: 'Tác giả' },
 ];
-
-interface TabBarProps {
-  active: TabKey;
-  onChange: (key: TabKey) => void;
-}
-
-function TabBar({ active, onChange }: TabBarProps) {
-  return (
-    <View style={styles.tabBar}>
-      {TAB_DEFS.map((t) => {
-        const isActive = active === t.key;
-        return (
-          <Pressable
-            key={t.key}
-            onPress={() => onChange(t.key)}
-            style={({ pressed }) => [
-              styles.tabItem,
-              isActive && styles.tabItemActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.tabText, isActive && styles.tabTextActive]} numberOfLines={1}>
-              {t.label}
-            </Text>
-            {isActive ? <View style={styles.tabUnderline} /> : null}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 interface SavedEmptyProps {
   onBrowsePress: () => void;
@@ -125,7 +105,7 @@ function AuthorsEmpty() {
 
 export function LibraryScreen() {
   const router = useRouter();
-  const { openStory, loginPromptModal } = useStoryNavigation();
+  const { openStory } = useStoryNavigation();
   const {
     handleTabPress,
     accountDrawerVisible,
@@ -233,15 +213,12 @@ export function LibraryScreen() {
     setAuthors((current) => current.filter((it) => String(it.author_id?._id ?? it.author_id) !== authorId));
   }, []);
 
-  // ── Filter cho tab "Theo dõi" — chỉ series có subscribed=true ───────
   const followedItems = bookshelf.filter((it) => it.subscribed === true);
 
-  // ── Counts ──────────────────────────────────────────────────────────
   const savedCount = bookshelf.length;
   const followedCount = followedItems.length;
   const authorsCount = authors.length;
 
-  // ── Renderers ───────────────────────────────────────────────────────
   const renderSaved: ListRenderItem<BookshelfItem> = useCallback(
     ({ item }) => (
       <LibraryStoryRow story={item} onPress={handleStoryPress} onRemove={handleRemoveFromBookshelf} />
@@ -258,18 +235,9 @@ export function LibraryScreen() {
 
   const renderAuthors: ListRenderItem<FollowedAuthor> = useCallback(
     ({ item }) => (
-      <FollowedAuthorRowWithUnfollow
-        item={item}
-        onUnfollow={handleUnfollowAuthor}
-        onPress={handleAuthorPress}
-      />
+      <FollowedAuthorRow item={item} onPress={handleAuthorPress} />
     ),
-    [handleUnfollowAuthor, handleAuthorPress],
-  );
-
-  const renderSeparator = useCallback(
-    () => <View style={styles.separator} />,
-    [],
+    [handleAuthorPress],
   );
 
   const isLoading =
@@ -290,147 +258,161 @@ export function LibraryScreen() {
   })();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Tủ truyện</Text>
-          <Text style={styles.subtitle}>{headerSubtitle}</Text>
-        </View>
-      </View>
-
-      <TabBar active={activeTab} onChange={setActiveTab} />
-
-      {/* ═══ TAB 1: ĐÃ LƯU — toàn bộ bookshelf ═══════════════════════════════ */}
-      {activeTab === 'saved' ? (
-        isLoading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.accent} />
-          </View>
-        ) : (
-          <FlatList
-            data={bookshelf}
-            keyExtractor={(item) => item._id}
-            renderItem={renderSaved}
-            ItemSeparatorComponent={renderSeparator}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={refreshAll}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
-              />
-            }
-            ListEmptyComponent={
-              error ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIcon}>
-                    <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
-                  </View>
-                  <Text style={styles.emptyTitle}>Không tải được dữ liệu</Text>
-                  <Text style={styles.emptySubtitle}>{error}</Text>
-                </View>
-              ) : (
-                <SavedEmpty onBrowsePress={() => handleTabPress('home')} />
-              )
-            }
-            contentContainerStyle={[
-              styles.listContent,
-              bookshelf.length === 0 && styles.listContentEmpty,
-            ]}
-            showsVerticalScrollIndicator={false}
-          />
-        )
-      ) : null}
-
-      {/* ═══ TAB 2: TRUYỆN THEO DÕI — lọc theo subscribed=true ═══════════════ */}
-      {activeTab === 'followed' ? (
-        isLoading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.accent} />
-          </View>
-        ) : (
-          <FlatList
-            data={followedItems}
-            keyExtractor={(item) => item._id}
-            renderItem={renderFollowed}
-            ItemSeparatorComponent={renderSeparator}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={refreshAll}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
-              />
-            }
-            ListEmptyComponent={<FollowedEmpty />}
-            contentContainerStyle={[
-              styles.listContent,
-              followedItems.length === 0 && styles.listContentEmpty,
-            ]}
-            showsVerticalScrollIndicator={false}
-          />
-        )
-      ) : null}
-
-      {/* ═══ TAB 3: TÁC GIẢ ĐANG THEO DÕI ═══════════════════════════════════ */}
-      {activeTab === 'authors' ? (
-        isLoading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.accent} />
-          </View>
-        ) : (
-          <FlatList
-            data={authors}
-            keyExtractor={(item) => item._id}
-            renderItem={renderAuthors}
-            ItemSeparatorComponent={renderSeparator}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={refreshAll}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
-              />
-            }
-            ListEmptyComponent={
-              authorsError ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIcon}>
-                    <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
-                  </View>
-                  <Text style={styles.emptyTitle}>Không tải được tác giả</Text>
-                  <Text style={styles.emptySubtitle}>{authorsError}</Text>
-                </View>
-              ) : (
-                <AuthorsEmpty />
-              )
-            }
-            contentContainerStyle={[
-              styles.listContent,
-              authors.length === 0 && styles.listContentEmpty,
-            ]}
-            showsVerticalScrollIndicator={false}
-          />
-        )
-      ) : null}
-
-      <BottomTabBar activeTab="library" onTabPress={handleTabPress} />
-
-      <AccountDrawer
-        visible={accountDrawerVisible}
-        onClose={() => setAccountDrawerVisible(false)}
-        onMenuPress={handleAccountMenuPress}
+    <View style={styles.root}>
+      <LinearGradient
+        colors={colors.gradBg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
       />
 
-      {loginPromptModal}
-      {tabLoginPromptModal}
-    </SafeAreaView>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
+
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Tủ truyện</Text>
+            <Text style={styles.subtitle}>{headerSubtitle}</Text>
+          </View>
+        </View>
+
+        <View style={styles.tabsWrap}>
+          <GlassSegmentedControl
+            options={TAB_DEFS.map((t) => ({ value: t.key, label: t.label }))}
+            value={activeTab}
+            onChange={(v) => setActiveTab(v as TabKey)}
+          />
+        </View>
+
+        {activeTab === 'saved' ? (
+          isLoading ? (
+            <View style={styles.centered}>
+              <GlassSkeleton width={160} height={18} />
+              <View style={{ height: spacing.md }} />
+              <GlassSkeleton width={240} height={14} />
+            </View>
+          ) : (
+            <FlatList
+              data={bookshelf}
+              keyExtractor={(item) => item._id}
+              renderItem={renderSaved}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={refreshAll}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+              ListEmptyComponent={
+                error ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIcon}>
+                      <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
+                    </View>
+                    <Text style={styles.emptyTitle}>Không tải được dữ liệu</Text>
+                    <Text style={styles.emptySubtitle}>{error}</Text>
+                  </View>
+                ) : (
+                  <SavedEmpty onBrowsePress={() => handleTabPress('home')} />
+                )
+              }
+              contentContainerStyle={[
+                styles.listContent,
+                bookshelf.length === 0 && styles.listContentEmpty,
+              ]}
+              showsVerticalScrollIndicator={false}
+            />
+          )
+        ) : null}
+
+        {activeTab === 'followed' ? (
+          isLoading ? (
+            <View style={styles.centered}>
+              <GlassSkeleton width={160} height={18} />
+              <View style={{ height: spacing.md }} />
+              <GlassSkeleton width={240} height={14} />
+            </View>
+          ) : (
+            <FlatList
+              data={followedItems}
+              keyExtractor={(item) => item._id}
+              renderItem={renderFollowed}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={refreshAll}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+              ListEmptyComponent={<FollowedEmpty />}
+              contentContainerStyle={[
+                styles.listContent,
+                followedItems.length === 0 && styles.listContentEmpty,
+              ]}
+              showsVerticalScrollIndicator={false}
+            />
+          )
+        ) : null}
+
+        {activeTab === 'authors' ? (
+          isLoading ? (
+            <View style={styles.centered}>
+              <GlassSkeleton width={160} height={18} />
+              <View style={{ height: spacing.md }} />
+              <GlassSkeleton width={240} height={14} />
+            </View>
+          ) : (
+            <FlatList
+              data={authors}
+              keyExtractor={(item) => item._id}
+              renderItem={renderAuthors}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={refreshAll}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+              ListEmptyComponent={
+                authorsError ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIcon}>
+                      <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
+                    </View>
+                    <Text style={styles.emptyTitle}>Không tải được tác giả</Text>
+                    <Text style={styles.emptySubtitle}>{authorsError}</Text>
+                  </View>
+                ) : (
+                  <AuthorsEmpty />
+                )
+              }
+              contentContainerStyle={[
+                styles.listContent,
+                authors.length === 0 && styles.listContentEmpty,
+              ]}
+              showsVerticalScrollIndicator={false}
+            />
+          )
+        ) : null}
+
+        <BottomTabBar activeTab="library" onTabPress={handleTabPress} />
+
+        <AccountDrawer
+          visible={accountDrawerVisible}
+          onClose={() => setAccountDrawerVisible(false)}
+          onMenuPress={handleAccountMenuPress}
+        />
+
+        {tabLoginPromptModal}
+      </SafeAreaView>
+    </View>
   );
 }
 
-// ── FollowedSeriesRow — dùng cho tab "Theo dõi", hiện badge "chương mới" ──
 interface FollowedSeriesRowProps {
   item: BookshelfItem;
   onPress: (id: string) => void;
@@ -443,66 +425,57 @@ function FollowedSeriesRow({ item, onPress }: FollowedSeriesRowProps) {
   const latest = series.latest_chapter_number ?? 0;
 
   return (
-    <Pressable
-      onPress={() => onPress(series._id)}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      <View style={styles.coverWrapper}>
-        {series.cover_image_url ? (
-          <Image source={{ uri: series.cover_image_url }} style={styles.cover} contentFit="cover" transition={200} />
-        ) : (
-          <View style={[styles.cover, styles.coverPlaceholder]}>
-            <Ionicons name="book-outline" size={24} color={colors.textMuted} />
-          </View>
-        )}
-      </View>
+    <View style={styles.row}>
+      <GlassListItem
+        tint="navy"
+        depth={1}
+        radius={radius.lg}
+        onPress={() => onPress(series._id)}
+        innerStyle={styles.rowInner}
+      >
+        <View style={styles.coverWrapper}>
+          {series.cover_image_url ? (
+            <Image source={{ uri: series.cover_image_url }} style={styles.cover} contentFit="cover" transition={200} />
+          ) : (
+            <View style={[styles.cover, styles.coverPlaceholder]}>
+              <Ionicons name="book-outline" size={24} color={colors.textMuted} />
+            </View>
+          )}
+        </View>
 
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
-          {series.name || 'Truyện chưa đặt tên'}
-        </Text>
-        <Text style={styles.metaLine}>
-          {latest > 0
-            ? `Mới nhất chương ${latest}${lastRead > 0 ? ` • đã đọc ${lastRead}` : ''}`
-            : 'Chưa có chương'}
-        </Text>
-        {newCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {newCount} chương mới
-            </Text>
-          </View>
-        ) : null}
-      </View>
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={2}>
+            {series.name || 'Truyện chưa đặt tên'}
+          </Text>
+          <Text style={styles.metaLine}>
+            {latest > 0
+              ? `Mới nhất chương ${latest}${lastRead > 0 ? ` • đã đọc ${lastRead}` : ''}`
+              : 'Chưa có chương'}
+          </Text>
+          {newCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {newCount} chương mới
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
-      <View style={styles.iconHint}>
-        <Ionicons name="notifications" size={20} color={colors.accent} />
-      </View>
-    </Pressable>
-  );
-}
-
-interface FollowedAuthorRowWithUnfollowProps {
-  item: FollowedAuthor;
-  onUnfollow: (authorId: string) => void;
-  onPress: (authorId: string) => void;
-}
-
-function FollowedAuthorRowWithUnfollow({
-  item,
-  onUnfollow,
-  onPress,
-}: FollowedAuthorRowWithUnfollowProps) {
-  const authorId = String(item.author_id?._id ?? item.author_id);
-  return (
-    <FollowedAuthorRow item={item} onPress={onPress} />
+        <View style={styles.iconHint}>
+          <Ionicons name="notifications" size={18} color={colors.accentLight} />
+        </View>
+      </GlassListItem>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -517,43 +490,20 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.textPrimary,
-    fontSize: 22,
+    fontSize: 28,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
+    letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 13,
     marginTop: spacing.xs,
+    fontFamily: typography.fontFamilyMedium,
   },
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  tabItem: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  tabItemActive: {},
-  tabUnderline: {
-    position: 'absolute',
-    bottom: 0,
-    left: '25%',
-    right: '25%',
-    height: 2,
-    backgroundColor: colors.accent,
-    borderRadius: 1,
-  },
-  tabText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: colors.accent,
+  tabsWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
   centered: {
     flex: 1,
@@ -561,29 +511,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: 120,
   },
   listContentEmpty: {
     flexGrow: 1,
   },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.lg + 64 + spacing.md,
-  },
   row: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  rowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    padding: spacing.md,
   },
   coverWrapper: {
-    width: 64,
-    height: 92,
+    width: 60,
+    height: 86,
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.surface,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   cover: {
     width: '100%',
@@ -601,6 +553,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 12,
     marginTop: 4,
+    fontFamily: typography.fontFamilyMedium,
   },
   badge: {
     alignSelf: 'flex-start',
@@ -609,10 +562,15 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
     marginTop: 6,
+    shadowColor: colors.danger,
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
   badgeText: {
     color: colors.white,
     fontSize: 11,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
   },
   iconHint: {
@@ -620,8 +578,6 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -637,8 +593,6 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
@@ -646,6 +600,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: colors.textPrimary,
     fontSize: 18,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
     marginBottom: spacing.sm,
   },
@@ -654,23 +609,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+    fontFamily: typography.fontFamilyMedium,
   },
   emptyAction: {
     marginTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   emptyActionText: {
-    color: colors.accent,
+    color: colors.accentLight,
     fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
   },
   pressed: {
     opacity: 0.75,
+    transform: [{ scale: 0.96 }],
   },
 });
 

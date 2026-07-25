@@ -1,6 +1,9 @@
+/**
+ * GenresScreen — Trang thể loại với GlassTextField + GlassPill group.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,7 +13,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -19,11 +21,18 @@ import { AccountDrawer } from '../components/home/AccountDrawer';
 import { BottomTabBar } from '../components/home/BottomTabBar';
 import { StoryFeaturedCard } from '../components/home/StoryFeaturedCard';
 import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
+import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import { fetchGenres, fetchTags } from '../services/genreService';
 import { fetchSeriesByFilter, searchSeries } from '../services/seriesService';
 import { Genre } from '../types/genre';
 import { FeaturedStory } from '../types/story';
-import { colors, spacing } from '../theme/colors';
+import { colors, radius, spacing, typography } from '../theme/colors';
+import {
+  GlassCard,
+  GlassPill,
+  GlassTextField,
+  GradientButton,
+} from '../theme/uiPrimitives';
 import { sortByRelevance } from '../utils/storySort';
 
 interface FilterOption {
@@ -38,33 +47,11 @@ const SORT_OPTIONS: FilterOption[] = [
   { id: 'createdAt', label: 'Truyện Mới' },
 ];
 
-const radiusSm = 8;
 const GRID_COLUMNS = 3;
-const GRID_GAP = spacing.sm;
+const GRID_GAP = spacing.xs;
 const STORIES_PER_PAGE = 6;
 
-function FilterCheckbox({
-  label,
-  checked,
-  onPress,
-}: {
-  label: string;
-  checked: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.checkboxItem, pressed && styles.pressed]}>
-      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked ? <Ionicons name="checkmark" size={12} color={colors.white} /> : null}
-      </View>
-      <Text style={styles.checkboxText} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function FilterCheckboxGrid({
+function FilterPillGrid({
   options,
   columnWidth,
   checked,
@@ -79,10 +66,12 @@ function FilterCheckboxGrid({
     <View style={styles.optionGrid}>
       {options.map((item) => (
         <View key={item.id} style={[styles.gridCell, { width: columnWidth }]}>
-          <FilterCheckbox
+          <GlassPill
             label={item.label}
-            checked={checked(item.id)}
+            selected={checked(item.id)}
             onPress={() => onToggle(item.id)}
+            tint="navy"
+            size="sm"
           />
         </View>
       ))}
@@ -91,12 +80,10 @@ function FilterCheckboxGrid({
 }
 
 export function GenresScreen() {
-  const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [keyword, setKeyword] = useState('');
   const [genres, setGenres] = useState<Genre[]>([]);
-  // Lưu cả object Genre để có sẵn `name` gửi BE (slug `id` chỉ dùng làm key ổn định).
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -121,6 +108,8 @@ export function GenresScreen() {
     handleAccountMenuPress,
     loginPromptModal,
   } = useMainTabNavigation('genres');
+
+  const { openStory, loginPromptModal: storyLoginPromptModal } = useStoryNavigation();
 
   const toggleGenre = useCallback((genre: Genre) => {
     setSelectedGenres((prev) =>
@@ -172,8 +161,6 @@ export function GenresScreen() {
         sort: selectedSort as 'average_score' | 'views_count' | 'createdAt' | 'updatedAt',
         limit: 60,
       });
-      // Khi user tìm theo từ khóa, ưu tiên sort theo relevance
-      // để truyện khớp tên hiển thị sát lên đầu, bất kể sort tiêu chí.
       setStories(trimmedKeyword ? sortByRelevance(data, trimmedKeyword) : data);
       setResultPage(1);
     } catch {
@@ -250,15 +237,25 @@ export function GenresScreen() {
     [resultPage, stories],
   );
 
-  const onStoryPress = useCallback((storyId: string) => {
-    router.push(`/story/${storyId}`);
-  }, [router]);
+  const onStoryPress = useCallback(
+    (storyId: string) => {
+      // `useStoryNavigation` sẽ check token: nếu chưa đăng nhập → show
+      // LoginRequiredModal thay vì navigate vào StoryDetail (BE sẽ trả lỗi
+      // nếu gọi story detail mà không có token → Reader/StoryDetail sẽ hiện
+      // "Không tải được chi tiết truyện").
+      void openStory(storyId);
+    },
+    [openStory],
+  );
 
-  const onSuggestPress = useCallback((story: FeaturedStory) => {
-    setKeyword(story.title);
-    setSuggestStories([]);
-    router.push(`/story/${story.id}`);
-  }, [router]);
+  const onSuggestPress = useCallback(
+    (story: FeaturedStory) => {
+      setKeyword(story.title);
+      setSuggestStories([]);
+      void openStory(story.id);
+    },
+    [openStory],
+  );
 
   const handleResultListLayout = useCallback((event: LayoutChangeEvent) => {
     setResultListTopY(event.nativeEvent.layout.y);
@@ -275,59 +272,79 @@ export function GenresScreen() {
   }, [resultListTopY]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.searchRow}>
-          <Pressable style={styles.searchButton} onPress={() => void runSearch()}>
-            <Text style={styles.searchButtonText}>TÌM KIẾM</Text>
-          </Pressable>
-          <TextInput
-            value={keyword}
-            onChangeText={setKeyword}
-            placeholder="Nhập từ khóa"
-            placeholderTextColor={colors.textMuted}
-            style={styles.searchInput}
-            returnKeyType="search"
-            onSubmitEditing={() => void runSearch()}
-          />
-        </View>
-        {keyword.trim().length > 0 ? (
-          <View style={styles.searchDropdown}>
-            {suggestLoading ? (
-              <View style={styles.searchHintRow}>
-                <ActivityIndicator color={colors.accent} />
-                <Text style={styles.searchHint}>Đang tìm truyện...</Text>
-              </View>
-            ) : suggestStories.length === 0 ? (
-              <Text style={styles.searchHint}>Không có truyện phù hợp</Text>
-            ) : (
-              suggestStories.map((story) => (
-                <Pressable
-                  key={`suggest-${story.id}`}
-                  onPress={() => onSuggestPress(story)}
-                  style={({ pressed }) => [styles.searchSuggestItem, pressed && styles.pressed]}
-                >
-                  <Image source={{ uri: story.coverUrl }} style={styles.searchCover} contentFit="cover" />
-                  <View style={styles.searchTextWrap}>
-                    <Text style={styles.searchTitle} numberOfLines={1}>
-                      {story.title}
-                    </Text>
-                    <Text style={styles.searchMeta} numberOfLines={1}>
-                      {story.genres.join(' · ')}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))
-            )}
-          </View>
-        ) : null}
+    <View style={styles.root}>
+      <LinearGradient
+        colors={colors.gradBg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      />
 
-        <View style={styles.sectionHeader}>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
+
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.searchRow}>
+            <GlassTextField
+              containerStyle={{ flex: 1 }}
+              value={keyword}
+              onChangeText={setKeyword}
+              placeholder="Nhập từ khóa truyện..."
+              icon="search"
+              onSubmitEditing={() => void runSearch()}
+              returnKeyType="search"
+            />
+            <GradientButton
+              label="TÌM"
+              onPress={() => void runSearch()}
+              size="md"
+              icon="search"
+              tint="warm"
+            />
+          </View>
+
+          {keyword.trim().length > 0 ? (
+            <GlassCard
+              tint="navy"
+              depth={2}
+              radius={radius.lg}
+              style={styles.searchDropdown}
+              innerStyle={styles.searchDropdownInner}
+            >
+              {suggestLoading ? (
+                <View style={styles.searchHintRow}>
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={styles.searchHint}>Đang tìm truyện...</Text>
+                </View>
+              ) : suggestStories.length === 0 ? (
+                <Text style={styles.searchHint}>Không có truyện phù hợp</Text>
+              ) : (
+                suggestStories.map((story) => (
+                  <Pressable
+                    key={`suggest-${story.id}`}
+                    onPress={() => onSuggestPress(story)}
+                    style={({ pressed }) => [styles.searchSuggestItem, pressed && styles.pressed]}
+                  >
+                    <Image source={{ uri: story.coverUrl }} style={styles.searchCover} contentFit="cover" />
+                    <View style={styles.searchTextWrap}>
+                      <Text style={styles.searchTitle} numberOfLines={1}>
+                        {story.title}
+                      </Text>
+                      <Text style={styles.searchMeta} numberOfLines={1}>
+                        {story.genres.join(' · ')}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))
+              )}
+            </GlassCard>
+          ) : null}
+
           <Pressable
             onPress={() => setGenreExpanded((prev) => !prev)}
             style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
@@ -335,32 +352,36 @@ export function GenresScreen() {
             <Text style={styles.sectionTitle}>Thể Loại</Text>
             <Ionicons
               name={genreExpanded ? 'chevron-up' : 'chevron-down'}
-              size={14}
+              size={18}
               color={colors.textPrimary}
             />
           </Pressable>
-        </View>
-        {genreExpanded ? (
-          <View style={styles.groupBox}>
-            {loading ? (
-              <View style={styles.loadingInline}>
-                <ActivityIndicator color={colors.accent} />
-              </View>
-            ) : (
-              <FilterCheckboxGrid
-                options={genreOptions}
-                columnWidth={columnWidth}
-                checked={(id) => selectedGenres.some((g) => g.id === id)}
-                onToggle={(id) => {
-                  const found = genres.find((g) => g.id === id);
-                  if (found) toggleGenre(found);
-                }}
-              />
-            )}
-          </View>
-        ) : null}
+          {genreExpanded ? (
+            <GlassCard
+              tint="navy"
+              depth={1}
+              radius={radius.lg}
+              style={styles.groupBox}
+              innerStyle={styles.groupBoxInner}
+            >
+              {loading ? (
+                <View style={styles.loadingInline}>
+                  <ActivityIndicator color={colors.accent} />
+                </View>
+              ) : (
+                <FilterPillGrid
+                  options={genreOptions}
+                  columnWidth={columnWidth}
+                  checked={(id) => selectedGenres.some((g) => g.id === id)}
+                  onToggle={(id) => {
+                    const found = genres.find((g) => g.id === id);
+                    if (found) toggleGenre(found);
+                  }}
+                />
+              )}
+            </GlassCard>
+          ) : null}
 
-        <View style={styles.sectionHeader}>
           <Pressable
             onPress={() => setTagExpanded((prev) => !prev)}
             style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
@@ -368,31 +389,35 @@ export function GenresScreen() {
             <Text style={styles.sectionTitle}>Tag</Text>
             <Ionicons
               name={tagExpanded ? 'chevron-up' : 'chevron-down'}
-              size={14}
+              size={18}
               color={colors.textPrimary}
             />
           </Pressable>
-        </View>
-        {tagExpanded ? (
-          <View style={styles.groupBox}>
-            {loading ? (
-              <View style={styles.loadingInline}>
-                <ActivityIndicator color={colors.accent} />
-              </View>
-            ) : tagOptions.length === 0 ? (
-              <Text style={styles.searchHint}>Chưa có tag nào.</Text>
-            ) : (
-              <FilterCheckboxGrid
-                options={tagOptions}
-                columnWidth={columnWidth}
-                checked={(id) => selectedTags.includes(id)}
-                onToggle={toggleTag}
-              />
-            )}
-          </View>
-        ) : null}
+          {tagExpanded ? (
+            <GlassCard
+              tint="navy"
+              depth={1}
+              radius={radius.lg}
+              style={styles.groupBox}
+              innerStyle={styles.groupBoxInner}
+            >
+              {loading ? (
+                <View style={styles.loadingInline}>
+                  <ActivityIndicator color={colors.accent} />
+                </View>
+              ) : tagOptions.length === 0 ? (
+                <Text style={styles.searchHint}>Chưa có tag nào.</Text>
+              ) : (
+                <FilterPillGrid
+                  options={tagOptions}
+                  columnWidth={columnWidth}
+                  checked={(id) => selectedTags.includes(id)}
+                  onToggle={toggleTag}
+                />
+              )}
+            </GlassCard>
+          ) : null}
 
-        <View style={styles.sectionHeader}>
           <Pressable
             onPress={() => setSortExpanded((prev) => !prev)}
             style={({ pressed }) => [styles.sectionToggle, pressed && styles.pressed]}
@@ -400,98 +425,114 @@ export function GenresScreen() {
             <Text style={styles.sectionTitle}>Sắp Xếp</Text>
             <Ionicons
               name={sortExpanded ? 'chevron-up' : 'chevron-down'}
-              size={14}
+              size={18}
               color={colors.textPrimary}
             />
           </Pressable>
-        </View>
-        {sortExpanded ? (
-          <View style={styles.groupBox}>
-            <FilterCheckboxGrid
-              options={SORT_OPTIONS}
-              columnWidth={columnWidth}
-              checked={(id) => selectedSort === id}
-              onToggle={setSelectedSort}
-            />
-          </View>
-        ) : null}
-
-        <Pressable onPress={() => void runSearch()} style={styles.applyButton}>
-          {searching ? (
-            <ActivityIndicator color={colors.white} />
-          ) : (
-            <Text style={styles.applyText}>Áp dụng bộ lọc</Text>
-          )}
-        </Pressable>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <View style={styles.resultList} onLayout={handleResultListLayout}>
-          {pagedStories.map((story) => (
-            <StoryFeaturedCard key={story.id} story={story} onPress={onStoryPress} />
-          ))}
-          {hasAppliedFilters && !searching && stories.length === 0 ? (
-            <Text style={styles.emptyText}>Không tìm thấy truyện phù hợp bộ lọc.</Text>
+          {sortExpanded ? (
+            <GlassCard
+              tint="navy"
+              depth={1}
+              radius={radius.lg}
+              style={styles.groupBox}
+              innerStyle={styles.groupBoxInner}
+            >
+              <FilterPillGrid
+                options={SORT_OPTIONS}
+                columnWidth={columnWidth}
+                checked={(id) => selectedSort === id}
+                onToggle={setSelectedSort}
+              />
+            </GlassCard>
           ) : null}
-        </View>
 
-        {hasAppliedFilters && stories.length > STORIES_PER_PAGE ? (
-          <View style={styles.paginationRow}>
-            <Pressable
-              onPress={() => goToResultPage(Math.max(1, resultPage - 1))}
-              disabled={resultPage === 1}
-              style={({ pressed }) => [
-                styles.pageArrowButton,
-                resultPage === 1 && styles.pageArrowDisabled,
-                pressed && resultPage > 1 && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={18}
-                color={resultPage === 1 ? colors.textMuted : colors.textPrimary}
-              />
-            </Pressable>
-            <Pressable
-              onPress={() => goToResultPage(Math.min(totalResultPages, resultPage + 1))}
-              disabled={resultPage === totalResultPages}
-              style={({ pressed }) => [
-                styles.pageArrowButton,
-                resultPage === totalResultPages && styles.pageArrowDisabled,
-                pressed && resultPage < totalResultPages && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={resultPage === totalResultPages ? colors.textMuted : colors.textPrimary}
-              />
-            </Pressable>
+          <GradientButton
+            label="Áp dụng bộ lọc"
+            onPress={() => void runSearch()}
+            size="lg"
+            icon="options"
+            tint="accent"
+            loading={searching}
+            fullWidth
+            style={{ marginTop: spacing.lg }}
+          />
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <View style={styles.resultList} onLayout={handleResultListLayout}>
+            {pagedStories.map((story) => (
+              <StoryFeaturedCard key={story.id} story={story} onPress={onStoryPress} />
+            ))}
+            {hasAppliedFilters && !searching && stories.length === 0 ? (
+              <Text style={styles.emptyText}>Không tìm thấy truyện phù hợp bộ lọc.</Text>
+            ) : null}
           </View>
-        ) : null}
-      </ScrollView>
 
-      <BottomTabBar activeTab="genres" onTabPress={handleTabPress} />
+          {hasAppliedFilters && stories.length > STORIES_PER_PAGE ? (
+            <View style={styles.paginationRow}>
+              <Pressable
+                onPress={() => goToResultPage(Math.max(1, resultPage - 1))}
+                disabled={resultPage === 1}
+                style={({ pressed }) => [
+                  styles.pageArrowButton,
+                  resultPage === 1 && styles.pageArrowDisabled,
+                  pressed && resultPage > 1 && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="chevron-back"
+                  size={18}
+                  color={resultPage === 1 ? colors.textMuted : colors.textPrimary}
+                />
+              </Pressable>
+              <Text style={styles.pageInfo}>
+                {resultPage}/{totalResultPages}
+              </Text>
+              <Pressable
+                onPress={() => goToResultPage(Math.min(totalResultPages, resultPage + 1))}
+                disabled={resultPage === totalResultPages}
+                style={({ pressed }) => [
+                  styles.pageArrowButton,
+                  resultPage === totalResultPages && styles.pageArrowDisabled,
+                  pressed && resultPage < totalResultPages && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={resultPage === totalResultPages ? colors.textMuted : colors.textPrimary}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+        </ScrollView>
 
-      <AccountDrawer
-        visible={accountDrawerVisible}
-        onClose={() => setAccountDrawerVisible(false)}
-        onMenuPress={handleAccountMenuPress}
-      />
+        <BottomTabBar activeTab="genres" onTabPress={handleTabPress} />
 
-      {loginPromptModal}
-    </SafeAreaView>
+        <AccountDrawer
+          visible={accountDrawerVisible}
+          onClose={() => setAccountDrawerVisible(false)}
+          onMenuPress={handleAccountMenuPress}
+        />
+
+        {loginPromptModal}
+        {storyLoginPromptModal}
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
   },
+  safeArea: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 140,
   },
   searchRow: {
     flexDirection: 'row',
@@ -499,39 +540,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  searchButton: {
-    height: 40,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radiusSm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  searchButtonText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  searchInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radiusSm,
-    paddingHorizontal: spacing.md,
-    color: colors.textPrimary,
-    backgroundColor: colors.surface,
-    fontSize: 14,
-  },
   searchDropdown: {
     marginTop: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radiusSm,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
+    borderRadius: radius.lg,
+  },
+  searchDropdownInner: {
+    padding: spacing.sm,
   },
   searchHintRow: {
     flexDirection: 'row',
@@ -545,20 +559,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+    fontFamily: typography.fontFamilyMedium,
   },
   searchSuggestItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   searchCover: {
     width: 34,
     height: 48,
-    borderRadius: 6,
+    borderRadius: radius.sm,
     backgroundColor: colors.surfaceElevated,
   },
   searchTextWrap: {
@@ -568,40 +581,35 @@ const styles = StyleSheet.create({
   searchTitle: {
     color: colors.textPrimary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
   },
   searchMeta: {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 2,
-  },
-  sectionHeader: {
-    marginTop: spacing.lg,
+    fontFamily: typography.fontFamilyMedium,
   },
   sectionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     alignSelf: 'flex-start',
-  },
-  groupTitle: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '700',
     marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
     color: colors.textPrimary,
-    fontSize: 20,
+    fontSize: 18,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
+    letterSpacing: -0.2,
   },
   groupBox: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radiusSm,
+    borderRadius: radius.lg,
+  },
+  groupBoxInner: {
     padding: spacing.md,
-    marginTop: spacing.sm,
-    backgroundColor: colors.surface,
   },
   optionGrid: {
     flexDirection: 'row',
@@ -612,45 +620,6 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 0,
   },
-  checkboxItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-  },
-  checkbox: {
-    width: 16,
-    height: 16,
-    marginTop: 2,
-    borderWidth: 1,
-    borderColor: colors.textSecondary,
-    borderRadius: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  checkboxChecked: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  checkboxText: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  applyButton: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.accent,
-    borderRadius: radiusSm,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  applyText: {
-    color: colors.white,
-    fontWeight: '700',
-    fontSize: 15,
-  },
   loadingInline: {
     paddingVertical: spacing.sm,
     alignItems: 'center',
@@ -659,6 +628,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     marginTop: spacing.md,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
   },
   resultList: {
     marginTop: spacing.lg,
@@ -667,6 +637,7 @@ const styles = StyleSheet.create({
   paginationRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
@@ -674,15 +645,20 @@ const styles = StyleSheet.create({
   pageArrowButton: {
     width: 38,
     height: 38,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    backgroundColor: colors.glassLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pageArrowDisabled: {
     opacity: 0.5,
+  },
+  pageInfo: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
+    minWidth: 32,
+    textAlign: 'center',
   },
   emptyText: {
     color: colors.textSecondary,
@@ -690,9 +666,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
   },
   pressed: {
     opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
 });
 
+export default GenresScreen;

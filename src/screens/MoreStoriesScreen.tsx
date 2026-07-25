@@ -1,9 +1,14 @@
+/**
+ * MoreStoriesScreen — grid 3 cột Liquid Glass.
+ */
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -11,11 +16,14 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { fetchSeriesByTab } from '../services/seriesService';
+import { clearSeriesCache, fetchSeriesByTab } from '../services/seriesService';
+import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import { FeaturedStory } from '../types/story';
 import { formatCompactNumber } from '../utils/formatNumber';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, typography } from '../theme/colors';
+import { GlassCard, GlassIconButton } from '../theme/uiPrimitives';
 
 const PAGE_SIZE = 12;
 
@@ -38,25 +46,47 @@ function StoryPosterCard({
   const coverHeight = width * 1.45;
 
   return (
-    <Pressable onPress={() => onPress(story.id)} style={({ pressed }) => [styles.card, { width }, pressed && styles.pressed]}>
-      <View style={[styles.coverWrapper, { height: coverHeight }]}>
-        <View style={styles.coverPlaceholder}>
-          <Text style={styles.coverTitle} numberOfLines={1}>
-            {story.title}
-          </Text>
+    <Pressable
+      onPress={() => onPress(story.id)}
+      style={({ pressed }) => [
+        styles.cardWrap,
+        { width, transform: [{ scale: pressed ? 0.96 : 1 }], opacity: pressed ? 0.9 : 1 },
+      ]}
+    >
+      <GlassCard
+        tint="dark"
+        depth={2}
+        style={styles.card}
+        innerStyle={styles.cardInner}
+      >
+        <View style={[styles.coverWrapper, { height: coverHeight }]}>
+          <Image
+            source={{ uri: story.coverUrl }}
+            style={styles.coverImage}
+            contentFit="cover"
+            transition={250}
+          />
+          <LinearGradient
+            colors={colors.gradBanner}
+            style={styles.coverOverlay}
+            pointerEvents="none"
+          />
         </View>
-      </View>
-      <View style={styles.metaRow}>
-        <Ionicons name="eye-outline" size={12} color={colors.textSecondary} />
-        <Text style={styles.metaText}>{formatCompactNumber(story.views)}</Text>
-        <Ionicons name="star" size={11} color={colors.gold} />
-        <Text style={styles.metaText}>{story.rating.toFixed(1)}</Text>
-      </View>
-      <Text style={styles.storyTitle} numberOfLines={2}>
-        {story.title}
-      </Text>
-      <Text style={styles.storyChapter}>Chương {story.latestChapter}</Text>
-      <Text style={styles.storyUpdated}>{story.updatedAt}</Text>
+        <View style={styles.metaRow}>
+          <View style={styles.metaItem}>
+            <Ionicons name="eye-outline" size={11} color={colors.cyan} />
+            <Text style={styles.metaText}>{formatCompactNumber(story.views)}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Ionicons name="star" size={11} color={colors.warning} />
+            <Text style={styles.metaText}>{story.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+        <Text style={styles.storyTitle} numberOfLines={2}>
+          {story.title}
+        </Text>
+        <Text style={styles.storyChapter}>Chương {story.latestChapter}</Text>
+      </GlassCard>
     </Pressable>
   );
 }
@@ -68,10 +98,11 @@ export function MoreStoriesScreen() {
   const [loading, setLoading] = useState(true);
   const [stories, setStories] = useState<FeaturedStory[]>([]);
   const [page, setPage] = useState(1);
+  const [refreshing, setRefreshing] = useState(false);
 
   const isUpdatesMode = mode === 'updates';
   const title = isUpdatesMode ? 'Cập Nhật Gần Đây' : 'Truyện Đề Xuất';
-  const subtitle = isUpdatesMode ? 'Truyện vừa có chương mới' : 'Truyện nổi bật theo theo dõi';
+  const subtitle = isUpdatesMode ? 'Truyện vừa có chương mới' : 'Truyện được theo dõi nhiều';
 
   const columnWidth = useMemo(() => {
     const columns = 3;
@@ -80,32 +111,31 @@ export function MoreStoriesScreen() {
     return Math.floor((screenWidth - horizontalPadding - gap) / columns);
   }, [screenWidth]);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchSeriesByTab(isUpdatesMode ? 'updates' : 'recommend', 48);
-        if (mounted) {
-          setStories(isUpdatesMode ? data : sortByReaders(data));
-        }
-      } catch {
-        if (mounted) {
-          setStories([]);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-    return () => {
-      mounted = false;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchSeriesByTab(isUpdatesMode ? 'updates' : 'recommend', 48);
+      setStories(isUpdatesMode ? data : sortByReaders(data));
+    } catch {
+      setStories([]);
+    } finally {
+      setLoading(false);
+    }
   }, [isUpdatesMode]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      clearSeriesCache();
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(stories.length / PAGE_SIZE));
   const visibleStories = useMemo(
@@ -117,9 +147,18 @@ export function MoreStoriesScreen() {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const handleStoryPress = useCallback((storyId: string) => {
-    router.push(`/story/${storyId}`);
-  }, [router]);
+  const { openStory, loginPromptModal } = useStoryNavigation();
+
+  const handleStoryPress = useCallback(
+    (storyId: string) => {
+      // `useStoryNavigation` tự check token: nếu chưa đăng nhập → show
+      // LoginRequiredModal thay vì navigate vào StoryDetail (BE sẽ trả lỗi
+      // nếu thiếu token → Reader/StoryDetail sẽ hiện "Không tải được chi
+      // tiết truyện").
+      void openStory(storyId);
+    },
+    [openStory],
+  );
 
   const pageButtons = useMemo(() => {
     const max = Math.min(totalPages, 4);
@@ -127,98 +166,129 @@ export function MoreStoriesScreen() {
   }, [totalPages]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+    <View style={styles.root}>
+      <LinearGradient
+        colors={colors.gradBg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
 
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-        </View>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
 
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.accent} />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.grid}>
-            {visibleStories.map((story) => (
-              <StoryPosterCard key={story.id} story={story} width={columnWidth} onPress={handleStoryPress} />
-            ))}
+        <View style={styles.header}>
+          <GlassIconButton
+            icon="arrow-back"
+            size={40}
+            tint="light"
+            onPress={() => router.back()}
+          />
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
+        </View>
 
-          <View style={styles.paginationRow}>
-            <Pressable
-              onPress={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1}
-              style={({ pressed }) => [
-                styles.pageButton,
-                page === 1 && styles.pageButtonDisabled,
-                pressed && page > 1 && styles.pressed,
-              ]}
-            >
-              <Ionicons name="chevron-back" size={14} color={page === 1 ? colors.textMuted : colors.textPrimary} />
-            </Pressable>
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={colors.accentLight} size="large" />
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                onRefresh={handleRefresh}
+                refreshing={refreshing}
+                tintColor={colors.accentLight}
+              />
+            }
+          >
+            <View style={styles.grid}>
+              {visibleStories.map((story) => (
+                <StoryPosterCard
+                  key={story.id}
+                  story={story}
+                  width={columnWidth}
+                  onPress={handleStoryPress}
+                />
+              ))}
+            </View>
 
-            {pageButtons.map((item) => (
+            <View style={styles.paginationRow}>
               <Pressable
-                key={item}
-                onPress={() => setPage(item)}
+                onPress={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
                 style={({ pressed }) => [
                   styles.pageButton,
-                  page === item && styles.pageButtonActive,
-                  pressed && styles.pressed,
+                  page === 1 && styles.pageButtonDisabled,
+                  pressed && page > 1 && styles.pressed,
                 ]}
               >
-                <Text style={[styles.pageText, page === item && styles.pageTextActive]}>{item}</Text>
+                <Ionicons
+                  name="chevron-back"
+                  size={14}
+                  color={page === 1 ? colors.textMuted : colors.textPrimary}
+                />
               </Pressable>
-            ))}
 
-            <Pressable
-              onPress={() => setPage((current) => Math.min(current + 1, totalPages))}
-              disabled={page === totalPages}
-              style={({ pressed }) => [
-                styles.pageButton,
-                page === totalPages && styles.pageButtonDisabled,
-                pressed && page < totalPages && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="chevron-forward"
-                size={14}
-                color={page === totalPages ? colors.textMuted : colors.textPrimary}
-              />
-            </Pressable>
-          </View>
-        </ScrollView>
-      )}
-    </SafeAreaView>
+              {pageButtons.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => setPage(item)}
+                  style={({ pressed }) => [
+                    styles.pageButton,
+                    page === item && styles.pageButtonActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={[styles.pageText, page === item && styles.pageTextActive]}>
+                    {item}
+                  </Text>
+                </Pressable>
+              ))}
+
+              <Pressable
+                onPress={() => setPage((current) => Math.min(current + 1, totalPages))}
+                disabled={page === totalPages}
+                style={({ pressed }) => [
+                  styles.pageButton,
+                  page === totalPages && styles.pageButtonDisabled,
+                  pressed && page < totalPages && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={page === totalPages ? colors.textMuted : colors.textPrimary}
+                />
+              </Pressable>
+            </View>
+          </ScrollView>
+        )}
+        {loginPromptModal}
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   headerText: {
     flex: 1,
@@ -226,11 +296,14 @@ const styles = StyleSheet.create({
   title: {
     color: colors.textPrimary,
     fontSize: 22,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
+    letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontFamily: typography.fontFamilyMedium,
     marginTop: 2,
   },
   centered: {
@@ -247,29 +320,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: spacing.sm,
+    marginTop: spacing.lg,
   },
   pageButton: {
-    minWidth: 30,
-    height: 30,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    minWidth: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glassLight,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   pageButtonActive: {
     backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   pageButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   pageText: {
     color: colors.textPrimary,
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
   },
   pageTextActive: {
@@ -280,54 +355,72 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  card: {
+  cardWrap: {
     marginBottom: spacing.sm,
   },
+  card: {
+    borderRadius: radius.lg,
+  },
+  cardInner: {
+    padding: spacing.xs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    gap: 4,
+  },
   coverWrapper: {
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
-  },
-  coverPlaceholder: {
-    flex: 1,
     backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    margin: spacing.xs,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  coverTitle: {
-    color: colors.textMuted,
-    fontSize: 11,
-    textAlign: 'center',
+  coverImage: {
+    flex: 1,
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.sm,
     marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   metaText: {
     color: colors.textSecondary,
     fontSize: 11,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
   },
   storyTitle: {
     color: colors.textPrimary,
     fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
     lineHeight: 18,
     marginTop: 4,
+    paddingHorizontal: 4,
+    letterSpacing: -0.1,
   },
   storyChapter: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  storyUpdated: {
-    color: colors.textMuted,
+    color: colors.cyan,
     fontSize: 11,
-    marginTop: 1,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
+    marginTop: 2,
+    paddingHorizontal: 4,
   },
   pressed: {
     opacity: 0.8,
+    transform: [{ scale: 0.96 }],
   },
 });

@@ -1,6 +1,6 @@
 import { apiGet } from './apiClient';
 import { getAuthToken } from './authService';
-import { FeaturedStory, Story } from '../types/story';
+import { FeaturedStory, Story, ReaderRankingResponse, RankingPeriod, RankingType, ReaderRankingItem } from '../types/story';
 import { StoryDetail } from '../types/storyDetail';
 import { fetchComments } from './commentService';
 
@@ -50,6 +50,12 @@ interface BeSeries {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * Thời điểm publish chapter mới nhất (BE chỉ update khi có chapter mới publish,
+   * không bị ảnh hưởng bởi vote/comment/view như `updatedAt`).
+   * BE trả ISO string khi dùng `.lean()`.
+   */
+  last_chapter_published_at?: string | null;
 }
 
 interface BeSeriesListResponse {
@@ -74,6 +80,7 @@ interface BeChapterListItem {
   published_at?: string;
   views_count?: number;
   views?: number;
+  cover_image_url?: string;
 }
 
 interface BeChapterListResponse {
@@ -181,23 +188,34 @@ function relativeTimeFromIso(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return 'Mới cập nhật';
   const diff = Date.now() - d.getTime();
-  const hourMs = 60 * 60 * 1000;
+
+  // Lệch giờ server-client có thể cho `updatedAt` ở tương lai (diff < 0).
+  // Coi như vừa xong để không hiển thị ngày tương lai.
+  if (diff < 0) return 'Vừa xong';
+
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
   const dayMs = 24 * hourMs;
-  if (diff < hourMs) return 'Vừa xong';
-  const hours = Math.floor(diff / hourMs);
-  if (hours < 24) return `${hours} giờ trước`;
-  const days = Math.floor(diff / dayMs);
-  if (days < 30) return `${days} ngày trước`;
+
+  if (diff < minuteMs) return 'Vừa xong';
+  if (diff < hourMs) return `${Math.floor(diff / minuteMs)} phút trước`;
+  if (diff < dayMs) return `${Math.floor(diff / hourMs)} giờ trước`;
+  if (diff < 30 * dayMs) return `${Math.floor(diff / dayMs)} ngày trước`;
   return d.toLocaleDateString('vi-VN');
 }
 
 function mapBeSeriesToStory(series: BeSeries): Story {
+  // Ưu tiên `last_chapter_published_at` (chỉ bump khi publish chapter) thay vì
+  // `updatedAt` của document (bị bump mỗi khi vote/comment/view → hiển thị "Vừa xong" sai nghĩa).
+  // Fallback cuối cùng về `updatedAt` để không vỡ UI với series chưa có chapter publish.
+  const lastChapterAt = series.last_chapter_published_at ?? null;
   return {
     id: series._id,
     title: series.name,
     coverUrl: series.cover_image_url ?? '',
     latestChapter: series.latest_chapter_number ?? series.total_chapters ?? 0,
-    updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
+    updatedAt: relativeTimeFromIso(lastChapterAt ?? series.updatedAt ?? series.latest_chapter?.published_at),
+    latestChapterPublishedAt: lastChapterAt ?? series.latest_chapter?.published_at ?? null,
     views: series.views_count ?? 0,
     genres: Array.isArray(series.genre) ? series.genre : [],
     rating: Number((series.average_score ?? 0).toFixed(1)),
@@ -222,12 +240,14 @@ function mapBeChapterToChapterItem(chapter: BeChapterListItem) {
     number: chapter.chapter_number,
     releasedAt: relativeTimeFromIso(chapter.published_at),
     views: chapter.views_count ?? chapter.views ?? 0,
+    coverUrl: chapter.cover_image_url || undefined,
   };
 }
 
 async function tryFetchBeList(params: SeriesListParams): Promise<Story[] | null> {
+  // BE `/reader/series` dùng `optionalAuth` nên cho phép khách chưa đăng nhập
+  // xem danh sách series đã publish. Không chặn khi không có token.
   const token = await getAuthToken();
-  if (!token) return null;
 
   // Chuẩn hoá mảng -> CSV để khớp `URLSearchParams.set` (apiGet không hỗ trợ array).
   const genreParam = normalizeCsvParam(params.genre);
@@ -245,7 +265,7 @@ async function tryFetchBeList(params: SeriesListParams): Promise<Story[] | null>
 
   try {
     const response = await apiGet<BeSeriesListResponse>('/reader/series', {
-      token,
+      token: token || undefined,
       params: requestParams,
     });
     if (!response.success || !Array.isArray(response.data)) return null;
@@ -379,18 +399,21 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
         content: c.content,
         createdAt: c.createdAt,
         replyTo: c.replyTo,
+        readerId: c.readerId,
       }));
     } catch {
       comments = [];
     }
 
+    const lastChapterAt = series.last_chapter_published_at ?? null;
     const detail: StoryDetail = {
       id: series._id,
       title: series.name,
       altName: series.name,
       coverUrl: series.cover_image_url ?? '',
       latestChapter: series.latest_chapter_number ?? 0,
-      updatedAt: relativeTimeFromIso(series.updatedAt ?? series.latest_chapter?.published_at),
+      updatedAt: relativeTimeFromIso(lastChapterAt ?? series.updatedAt ?? series.latest_chapter?.published_at),
+      latestChapterPublishedAt: lastChapterAt ?? series.latest_chapter?.published_at ?? null,
       views: series.views_count ?? 0,
       genres: Array.isArray(series.genre) ? series.genre : [],
       author: pickAuthorName(series.author_id),
@@ -405,7 +428,12 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
       rating: Number((series.average_score ?? 0).toFixed(1)),
       ratingCount: series.total_votes ?? 0,
       followers: series.total_votes ?? 0,
-      chapters: chapters.map(mapBeChapterToChapterItem),
+      chapters: chapters
+        .map(mapBeChapterToChapterItem)
+        .sort((a, b) => {
+          if (b.number !== a.number) return b.number - a.number;
+          return b.releasedAt.localeCompare(a.releasedAt);
+        }),
       comments,
     };
     setCached(detailCache, id, detail);
@@ -505,4 +533,65 @@ export async function fetchSeriesByFilter(
   }
 
   return [];
+}
+
+// ============ Reader Ranking Dashboard ============
+
+const rankingCache = new Map<string, { value: ReaderRankingResponse; timestamp: number }>();
+const RANKING_CACHE_TTL = 60_000; // 1 phút
+
+export interface RankingDashboardResult {
+  topViews: ReaderRankingItem[];
+  topVotes: ReaderRankingItem[];
+  topRating: ReaderRankingItem[];
+  period: RankingPeriod;
+  periodLabel: string;
+}
+
+export async function fetchReaderRankingDashboard(
+  period: RankingPeriod = 'weekly',
+  limit = 10,
+): Promise<RankingDashboardResult> {
+  const token = await getAuthToken();
+
+  const cacheKey = `${period}-${limit}`;
+  const cached = rankingCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < RANKING_CACHE_TTL) {
+    const { value } = cached;
+    return {
+      topViews: value.data.top_views,
+      topVotes: value.data.top_votes,
+      topRating: value.data.top_rating,
+      period: value.meta.period,
+      periodLabel: value.meta.period_label,
+    };
+  }
+
+  try {
+    // Try without token first (public endpoint)
+    const response = await apiGet<ReaderRankingResponse>('/reader/rankings/dashboard', {
+      token: token || undefined,
+      params: { period, limit },
+    });
+
+    if (!response.success) {
+      return { topViews: [], topVotes: [], topRating: [], period, periodLabel: 'Tuần này' };
+    }
+
+    rankingCache.set(cacheKey, { value: response, timestamp: Date.now() });
+
+    return {
+      topViews: response.data.top_views,
+      topVotes: response.data.top_votes,
+      topRating: response.data.top_rating,
+      period: response.meta.period,
+      periodLabel: response.meta.period_label,
+    };
+  } catch {
+    return { topViews: [], topVotes: [], topRating: [], period, periodLabel: 'Tuần này' };
+  }
+}
+
+export function clearRankingCache(): void {
+  rankingCache.clear();
 }

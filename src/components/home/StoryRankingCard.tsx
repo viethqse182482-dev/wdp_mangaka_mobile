@@ -1,9 +1,16 @@
+/**
+ * StoryRankingCard — card dạng row cho ranking.
+ *
+ *  - Top 3 rank badge gradient (gold/silver/bronze).
+ *  - Cover nhỏ + title + rating row + meta.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Story } from '../../types/story';
 import { formatCompactNumber } from '../../utils/formatNumber';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
 
 interface StoryRankingCardProps {
   story: Story;
@@ -11,20 +18,46 @@ interface StoryRankingCardProps {
   onPress: (id: string) => void;
 }
 
+const RANK_COLORS: Record<number, [string, string]> = {
+  1: ['#FFD56B', '#FF9A3D'],
+  2: ['#E8ECEF', '#A5B0BD'],
+  3: ['#F4A56A', '#B86E3C'],
+};
+
 export function StoryRankingCard({ story, rank, onPress }: StoryRankingCardProps) {
-  const roundedRating = Math.max(0, Math.min(5, Math.round(story.rating)));
+  const roundedRating = Math.max(0, Math.min(5, Math.round(story.rating ?? 0)));
+  const isTop3 = rank <= 3;
 
   return (
     <Pressable
       onPress={() => onPress(story.id)}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && { transform: [{ scale: 0.98 }], opacity: 0.85 },
+      ]}
     >
-      <View style={styles.rankBadge}>
-        <Text style={styles.rankText}>{rank}</Text>
-      </View>
+      {isTop3 ? (
+        <LinearGradient
+          colors={RANK_COLORS[rank]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.rankBadge}
+        >
+          <Text style={styles.rankText}>{rank}</Text>
+        </LinearGradient>
+      ) : (
+        <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
+          <Text style={styles.rankTextMuted}>{rank}</Text>
+        </View>
+      )}
 
       <View style={styles.coverWrapper}>
-        <Image source={{ uri: story.coverUrl }} style={styles.cover} contentFit="cover" transition={200} />
+        <Image
+          source={{ uri: story.coverUrl }}
+          style={styles.cover}
+          contentFit="cover"
+          transition={200}
+        />
       </View>
 
       <View style={styles.info}>
@@ -38,14 +71,16 @@ export function StoryRankingCard({ story, rank, onPress }: StoryRankingCardProps
               key={index}
               name={index < roundedRating ? 'star' : 'star-outline'}
               size={12}
-              color={index < roundedRating ? colors.gold : colors.textMuted}
+              color={index < roundedRating ? colors.warning : colors.textMuted}
             />
           ))}
-          <Text style={styles.ratingText}>{story.rating.toFixed(1)}/5</Text>
+          <Text style={styles.ratingText}>{(story.rating ?? 0).toFixed(1)}/5</Text>
         </View>
 
         <Text style={styles.metaText}>Lượt đọc: {formatCompactNumber(story.views)}</Text>
       </View>
+
+      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
     </Pressable>
   );
 }
@@ -56,29 +91,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingVertical: spacing.md,
   },
   rankBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.accent,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.warning,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  rankBadgeMuted: {
+    backgroundColor: colors.glassMedium,
+    shadowOpacity: 0,
   },
   rankText: {
     color: colors.white,
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
+  },
+  rankTextMuted: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
   },
   coverWrapper: {
     width: 56,
     height: 80,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.surface,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   cover: {
     width: '100%',
@@ -91,14 +142,16 @@ const styles = StyleSheet.create({
   title: {
     color: colors.textPrimary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
     lineHeight: 18,
+    letterSpacing: -0.1,
   },
   starRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    marginTop: spacing.xs,
+    marginTop: 6,
   },
   ratingText: {
     color: colors.textSecondary,
@@ -108,11 +161,8 @@ const styles = StyleSheet.create({
   },
   metaText: {
     color: colors.textMuted,
-    marginTop: spacing.xs,
+    marginTop: 4,
     fontSize: 12,
-  },
-  pressed: {
-    opacity: 0.85,
-    backgroundColor: colors.surface,
+    fontFamily: typography.fontFamilyMedium,
   },
 });

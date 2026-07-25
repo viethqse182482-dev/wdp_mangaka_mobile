@@ -5,7 +5,6 @@ import { clearAuthSession, getAuthToken } from '../services/authService';
 import { BottomTabKey } from '../types/story';
 
 const TAB_REDIRECT: Partial<Record<BottomTabKey, string>> = {
-  genres: '/genres',
   library: '/library',
 };
 
@@ -45,6 +44,20 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
         return;
       }
 
+      if (tab === 'ranking') {
+        if (activeTab !== 'ranking') {
+          router.push('/ranking');
+        }
+        return;
+      }
+
+      if (tab === 'genres') {
+        if (activeTab !== 'genres') {
+          router.push('/genres');
+        }
+        return;
+      }
+
       const token = await getAuthToken();
       if (!token) {
         showLoginPrompt(TAB_REDIRECT[tab]);
@@ -53,13 +66,6 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
 
       if (tab === 'profile') {
         setAccountDrawerVisible(true);
-        return;
-      }
-
-      if (tab === 'genres') {
-        if (activeTab !== 'genres') {
-          router.push('/genres');
-        }
         return;
       }
 
@@ -118,7 +124,7 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
       setAccountDrawerVisible(false);
       router.replace('/login');
     }
-  }, [router]);
+  }, [router, setAccountDrawerVisible]);
 
   const loginPromptModal = (
     <LoginRequiredModal

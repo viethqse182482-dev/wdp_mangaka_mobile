@@ -1,71 +1,112 @@
-import { Ionicons } from '@expo/vector-icons';
+/**
+ * StoryActionBar — CTA chính + quick actions gọn.
+ *
+ * Design:
+ *  - Quick Actions: glass toolbar ngang chứa 2 icon tròn (bookmark, notify).
+ *  - Primary CTA: GradientButton lớn, nổi bật, chiếm toàn bộ chiều rộng.
+ *  - Optional "Continue reading" glass pill phía trên CTA nếu có lịch sử.
+ *    → Tap pill = đọc tiếp chương đã đọc (nhanh).
+ *    → Tap CTA chính = mở ReadActionSheet (chọn tiếp/chọn lại/chọn chương).
+ *    → Trừ khi chưa từng đọc, khi đó CTA = đi thẳng chương 1.
+ *
+ * Mục tiêu: giảm chiều dọc, primary focus 100% vào nút ĐỌC.
+ */
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Story } from '../../types/story';
 import { BookshelfButton } from '../library/BookshelfButton';
-import { FollowAuthorButton } from './FollowAuthorButton';
 import { NotificationToggle } from './NotificationToggle';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { LiquidGlass } from '../../theme/LiquidGlass';
+import { GradientButton } from '../../theme/uiPrimitives';
 
 interface StoryActionBarProps {
   story: Story;
   authorId?: string;
   authorName?: string;
   lastReadChapter?: number;
-  onReadFromStart?: () => void;
+  /**
+   * Có lịch sử đọc trước đó không. Quyết định:
+   *  - Hiển thị pill "Tiếp tục đọc" phía trên CTA.
+   *  - Primary CTA đổi sang "ĐỌC NGAY" (parent sẽ mở ReadActionSheet).
+   * Nếu false → primary CTA = "BẮT ĐẦU ĐỌC" → đi thẳng chương 1.
+   */
+  hasHistory: boolean;
+  onRead: () => void;
   onContinueReading?: () => void;
   onLoginRequired?: () => void;
 }
 
 export function StoryActionBar({
   story,
-  authorId,
-  authorName,
   lastReadChapter,
-  onReadFromStart,
+  hasHistory,
+  onRead,
   onContinueReading,
   onLoginRequired,
 }: StoryActionBarProps) {
-  const hasHistory = typeof lastReadChapter === 'number' && lastReadChapter > 1;
-
   return (
     <View style={styles.wrapper}>
-      <View style={styles.row}>
-        <BookshelfButton
-          seriesId={story.id}
-          variant="pill"
-          onLoginRequired={onLoginRequired}
-        />
+      {/* Quick Actions — glass toolbar ngang, 2 icon compact */}
+      <LiquidGlass
+        tint="navy"
+        depth={2}
+        radius={radius.pill}
+        style={styles.toolbar}
+        innerStyle={styles.toolbarInner}
+      >
+        <View style={styles.toolbarItem}>
+          <BookshelfButton
+            seriesId={story.id}
+            variant="icon"
+            onLoginRequired={onLoginRequired}
+          />
+        </View>
+        <View style={styles.toolbarDivider} />
+        <View style={styles.toolbarItem}>
+          <NotificationToggle
+            seriesId={story.id}
+            seriesTitle={story.title}
+            onLoginRequired={onLoginRequired}
+          />
+        </View>
+      </LiquidGlass>
 
-        <NotificationToggle
-          seriesId={story.id}
-          seriesTitle={story.title}
-          onLoginRequired={onLoginRequired}
-        />
-      </View>
-
-      {authorId ? (
-        <FollowAuthorButton
-          authorId={authorId}
-          authorName={authorName}
-          onLoginRequired={onLoginRequired}
-        />
+      {/* Continue Reading — nhỏ gọn, ẩn khi chưa có history.
+          Tap = đọc tiếp ngay, không mở sheet. */}
+      {hasHistory && typeof lastReadChapter === 'number' ? (
+        <Pressable
+          onPress={onContinueReading}
+          style={({ pressed }) => [styles.continueWrap, pressed && styles.pressed]}
+        >
+          <LiquidGlass
+            tint="accent"
+            depth={2}
+            radius={radius.lg}
+            style={styles.continue}
+            innerStyle={styles.continueInner}
+          >
+            <Ionicons name="play-circle" size={20} color={colors.accentLight} />
+            <Text style={styles.continueLabel}>
+              Tiếp tục đọc · Chương {lastReadChapter}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </LiquidGlass>
+        </Pressable>
       ) : null}
 
-      <View style={styles.readRow}>
-        <Pressable
-          onPress={onReadFromStart}
-          style={({ pressed }) => [
-            styles.readButton,
-            styles.readButtonPrimary,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="book" size={16} color={colors.white} />
-          <Text style={styles.readButtonTextPrimary}>
-            {hasHistory ? 'Đọc Từ Đầu' : 'Đọc'}
-          </Text>
-        </Pressable>
-      </View>
+      {/* Primary CTA — GradientButton lớn
+          - Chưa có history: "BẮT ĐẦU ĐỌC" → parent đi thẳng chương 1.
+          - Có history:    "ĐỌC NGAY"       → parent mở ReadActionSheet. */}
+      <GradientButton
+        label={hasHistory ? 'ĐỌC NGAY' : 'BẮT ĐẦU ĐỌC'}
+        icon="book"
+        variant="primary"
+        size="lg"
+        fullWidth
+        glow
+        onPress={onRead}
+      />
     </View>
   );
 }
@@ -73,48 +114,57 @@ export function StoryActionBar({
 const styles = StyleSheet.create({
   wrapper: {
     paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    paddingTop: spacing.md,
     gap: spacing.sm,
   },
-  row: {
+  // Quick Actions toolbar
+  toolbar: {
+    alignSelf: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  toolbarInner: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
   },
-  readRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+  toolbarDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    backgroundColor: colors.glassBorder,
+    marginHorizontal: spacing.xs,
   },
-  readButton: {
-    flex: 1,
+  toolbarItem: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  // Continue reading
+  continueWrap: {
+    alignSelf: 'stretch',
+    marginTop: spacing.xs,
+  },
+  continue: {
+    alignSelf: 'stretch',
+  },
+  continueInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  readButtonPrimary: {
-    backgroundColor: colors.accent,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  readButtonSecondary: {
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    flex: 2,
-  },
-  readButtonTextPrimary: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  readButtonTextSecondary: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '700',
+  continueLabel: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
   pressed: {
-    opacity: 0.75,
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
 });

@@ -131,9 +131,7 @@ export function FollowAuthorButton({
             ]}
             numberOfLines={1}
           >
-            {following
-              ? `Đang theo dõi${authorName ? ` ${authorName}` : ''}`
-              : 'Theo dõi tác giả'}
+            {following ? 'Đang theo dõi' : 'Theo dõi tác giả'}
           </Text>
         </>
       )}

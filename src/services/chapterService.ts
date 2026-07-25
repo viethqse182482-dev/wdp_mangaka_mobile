@@ -44,15 +44,23 @@ interface BeChapterPagesResponse {
   };
 }
 
+// Timeout cho việc fetch chapter pages: 30s để khớp với default timeout
+// của `apiClient` (30s cho cold-start Render HTTPS). Sau 30s mà chưa có
+// response thì ném lỗi → ReaderScreen sẽ hiện ErrorState với nút "Thử lại".
+const FETCH_CHAPTER_PAGES_TIMEOUT_MS = 30_000;
+
 async function fetchChapterPagesFromBe(chapterId: string): Promise<ChapterPage[]> {
   const token = await getAuthToken();
-  if (!token) {
-    throw new Error('Bạn cần đăng nhập để đọc chapter này.');
-  }
 
   const response = await apiGet<BeChapterPagesResponse>(
     `/reader/chapters/${encodeURIComponent(chapterId)}/pages`,
-    { token },
+    {
+      token: token || undefined,
+      // Timeout tường minh để document ý đồ: nếu BE / network chậm hơn
+      // 30s, ReaderScreen sẽ tự dừng và hiện "Không tải được nội dung
+      // chương" + nút "Thử lại" (retry) thay vì xoay spinner vô hạn.
+      timeoutMs: FETCH_CHAPTER_PAGES_TIMEOUT_MS,
+    },
   );
 
   if (!response.success || !Array.isArray(response.data)) {

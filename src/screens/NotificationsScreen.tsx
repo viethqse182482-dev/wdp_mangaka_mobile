@@ -1,3 +1,9 @@
+/**
+ * NotificationsScreen — danh sách thông báo với Liquid Glass cards.
+ *
+ *  - Mỗi thông báo là GlassListItem glass.
+ *  - Unread có glow + dot cyan.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
@@ -6,20 +12,19 @@ import {
   Alert,
   FlatList,
   ListRenderItem,
-  Pressable,
   RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  useNotification,
-} from '../context/NotificationContext';
+import { useNotification } from '../context/NotificationContext';
 import { useStoryNavigation } from '../hooks/useStoryNavigation';
 import { NotificationItem } from '../services/notificationService';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, typography } from '../theme/colors';
+import { GlassCard, GlassIconButton, GlassListItem, GlassPill, Tag } from '../theme/uiPrimitives';
 import { formatReadTime } from '../utils/formatReadTime';
 
 export function NotificationsScreen() {
@@ -42,6 +47,15 @@ export function NotificationsScreen() {
       void refresh();
     }, [refresh]),
   );
+
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || loading) return;
+    void loadMore();
+  }, [hasMore, loading, loadMore]);
+
+  const handleRefresh = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -78,37 +92,26 @@ export function NotificationsScreen() {
       Alert.alert('Không có thông báo chưa đọc');
       return;
     }
-    Alert.alert(
-      'Đánh dấu đã đọc tất cả?',
-      'Toàn bộ thông báo sẽ chuyển sang trạng thái đã đọc.',
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Đồng ý', onPress: () => void markAllAsRead() },
-      ],
-    );
+    Alert.alert('Đánh dấu đã đọc tất cả?', 'Toàn bộ thông báo sẽ chuyển sang trạng thái đã đọc.', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Đồng ý', onPress: () => void markAllAsRead() },
+    ]);
   }, [notifications.length, unreadCount, markAllAsRead]);
 
   const renderItem: ListRenderItem<NotificationItem> = useCallback(
     ({ item }) => (
-      <NotificationRow
-        item={item}
-        onPress={handleItemPress}
-        onLongPress={handleLongPress}
-      />
+      <NotificationRow item={item} onPress={handleItemPress} onLongPress={handleLongPress} />
     ),
     [handleItemPress, handleLongPress],
   );
 
-  const renderSeparator = useCallback(
-    () => <View style={styles.separator} />,
-    [],
-  );
+  const renderSeparator = useCallback(() => <View style={styles.separator} />, []);
 
   const renderFooter = useCallback(() => {
     if (!hasMore) return null;
     return (
       <View style={styles.footer}>
-        <ActivityIndicator size="small" color={colors.accent} />
+        <ActivityIndicator size="small" color={colors.accentLight} />
       </View>
     );
   }, [hasMore]);
@@ -130,63 +133,45 @@ export function NotificationsScreen() {
   }, [loading]);
 
   const headerRightLabel = useMemo(
-    () => (unreadCount > 0 ? `Đánh dấu tất cả (${unreadCount})` : 'Đánh dấu tất cả'),
+    () => (unreadCount > 0 ? `Đánh dấu (${unreadCount})` : 'Đánh dấu'),
     [unreadCount],
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+    <View style={styles.root}>
+      <LinearGradient
+        colors={colors.gradBg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
 
-      <View style={styles.header}>
-        <Pressable
-          onPress={handleBack}
-          hitSlop={8}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-        </Pressable>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
 
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Thông báo</Text>
-          {!loading ? (
-            <Text style={styles.subtitle}>
-              {notifications.length > 0
-                ? `${notifications.length} thông báo${unreadCount > 0 ? ` • ${unreadCount} chưa đọc` : ''}`
-                : 'Cập nhật mới nhất sẽ hiện ở đây'}
-            </Text>
-          ) : (
-            <Text style={styles.subtitle}>Đang tải...</Text>
-          )}
+        <View style={styles.header}>
+          <GlassIconButton icon="arrow-back" size={40} tint="light" onPress={handleBack} />
+
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Thông báo</Text>
+            {!loading && notifications.length > 0 && (
+              <Text style={styles.subtitle}>
+                {unreadCount > 0 ? `${unreadCount} chưa đọc` : 'Đã đọc hết'}
+              </Text>
+            )}
+          </View>
+
+          <GlassPill
+            label={headerRightLabel}
+            icon="checkmark-done"
+            selected={unreadCount > 0}
+            disabled={unreadCount === 0}
+            onPress={handleMarkAll}
+            tint="accent"
+            size="sm"
+          />
         </View>
 
-        <Pressable
-          onPress={handleMarkAll}
-          hitSlop={8}
-          disabled={unreadCount === 0}
-          style={({ pressed }) => [
-            styles.markAllButton,
-            unreadCount === 0 && styles.markAllButtonDisabled,
-            pressed && unreadCount > 0 && styles.pressed,
-          ]}
-        >
-          <Text
-            style={[
-              styles.markAllText,
-              unreadCount === 0 && styles.markAllTextDisabled,
-            ]}
-            numberOfLines={1}
-          >
-            {headerRightLabel}
-          </Text>
-        </Pressable>
-      </View>
-
-      {loading && notifications.length === 0 ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      ) : (
         <FlatList
           data={notifications}
           keyExtractor={(item) => item._id}
@@ -197,23 +182,30 @@ export function NotificationsScreen() {
           contentContainerStyle={[
             styles.listContent,
             notifications.length === 0 && styles.listContentEmpty,
+            notifications.length === 0 && loading && styles.listContentLoading,
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={loading && notifications.length > 0}
-              onRefresh={() => void refresh()}
-              tintColor={colors.accent}
+              onRefresh={handleRefresh}
+              tintColor={colors.accentLight}
               colors={[colors.accent]}
             />
           }
-          onEndReached={() => void loadMore()}
-          onEndReachedThreshold={0.4}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.6}
         />
-      )}
 
-      {loginPromptModal}
-    </SafeAreaView>
+        {loading && notifications.length === 0 ? (
+          <View style={styles.initialLoadingOverlay} pointerEvents="none">
+            <ActivityIndicator size="large" color={colors.accentLight} />
+          </View>
+        ) : null}
+
+        {loginPromptModal}
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -229,35 +221,42 @@ function NotificationRow({ item, onPress, onLongPress }: NotificationRowProps) {
   const iconColor = getColorForType(item.type);
 
   return (
-    <Pressable
+    <GlassListItem
+      tint="dark"
+      depth={isUnread ? 2 : 1}
+      glow={isUnread}
       onPress={() => onPress(item)}
       onLongPress={() => onLongPress(item)}
-      delayLongPress={350}
-      style={({ pressed }) => [
-        styles.row,
-        isUnread && styles.rowUnread,
-        pressed && styles.rowPressed,
-      ]}
     >
-      {isUnread ? <View style={styles.unreadDot} /> : null}
+      <View style={styles.rowInner}>
+        <View style={[styles.iconWrap, { backgroundColor: `${iconColor}22` }]}>
+          <Ionicons name={iconName} size={20} color={iconColor} />
+        </View>
 
-      <View style={[styles.iconWrap, { backgroundColor: `${iconColor}22` }]}>
-        <Ionicons name={iconName} size={20} color={iconColor} />
+        <View style={styles.rowContent}>
+          <View style={styles.titleRow}>
+            <Text style={styles.rowTitle} numberOfLines={2}>
+              {item.title || 'Thông báo'}
+            </Text>
+            {isUnread ? <View style={styles.unreadDot} /> : null}
+          </View>
+          <Text style={styles.rowMessage} numberOfLines={2}>
+            {item.message}
+          </Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.rowTime}>{formatReadTime(item.created_at)}</Text>
+            <Tag label={getTypeLabel(item.type)} variant="default" size="sm" />
+          </View>
+        </View>
       </View>
-
-      <View style={styles.rowContent}>
-        <Text style={styles.rowTitle} numberOfLines={2}>
-          {item.title || 'Thông báo'}
-        </Text>
-        <Text style={styles.rowMessage} numberOfLines={2}>
-          {item.message}
-        </Text>
-        <Text style={styles.rowTime}>
-          {formatReadTime(item.created_at)}
-        </Text>
-      </View>
-    </Pressable>
+    </GlassListItem>
   );
+}
+
+function getTypeLabel(type: string): string {
+  if (type === 'new_chapter_published') return 'Chương mới';
+  if (type === 'new_series_from_author') return 'Truyện mới';
+  return 'Hệ thống';
 }
 
 function getIconForType(type: string): keyof typeof Ionicons.glyphMap {
@@ -267,29 +266,26 @@ function getIconForType(type: string): keyof typeof Ionicons.glyphMap {
 }
 
 function getColorForType(type: string): string {
-  if (type === 'new_chapter_published') return colors.accent;
-  if (type === 'new_series_from_author') return '#8B5CF6';
+  if (type === 'new_chapter_published') return colors.accentLight;
+  if (type === 'new_series_from_author') return colors.cyan;
   return colors.textSecondary;
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  safeArea: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerText: {
     flex: 1,
@@ -297,77 +293,53 @@ const styles = StyleSheet.create({
   title: {
     color: colors.textPrimary,
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   subtitle: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontFamily: typography.fontFamilyMedium,
     marginTop: 2,
   },
-  markAllButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    maxWidth: 160,
-  },
-  markAllButtonDisabled: {
-    opacity: 0.45,
-    backgroundColor: colors.surfaceElevated,
-    borderColor: colors.border,
-  },
-  markAllText: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  markAllTextDisabled: {
-    color: colors.textMuted,
-  },
-  centered: {
-    flex: 1,
+  initialLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: spacing.huge,
   },
   listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
+    flexGrow: 1,
   },
   listContentEmpty: {
     flexGrow: 1,
   },
+  listContentLoading: {
+    justifyContent: 'center',
+  },
   separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    height: spacing.sm,
   },
   footer: {
     paddingVertical: spacing.lg,
     alignItems: 'center',
   },
-  row: {
+  rowInner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  rowUnread: {
-    backgroundColor: 'rgba(255, 107, 53, 0.06)',
-  },
-  rowPressed: {
-    opacity: 0.75,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-    marginTop: 8,
   },
   iconWrap: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -375,22 +347,45 @@ const styles = StyleSheet.create({
   rowContent: {
     flex: 1,
     minWidth: 0,
+    gap: 4,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   rowTitle: {
+    flex: 1,
     color: colors.textPrimary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
-    marginBottom: 2,
   },
   rowMessage: {
     color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
-    marginBottom: 4,
+    fontFamily: typography.fontFamilyPlatform as string,
   },
   rowTime: {
     color: colors.textMuted,
     fontSize: 11,
+    fontFamily: typography.fontFamilyMedium,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.cyan,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
   },
   emptyState: {
     flex: 1,
@@ -400,12 +395,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
@@ -413,12 +406,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: colors.textPrimary,
     fontSize: 18,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
     marginBottom: spacing.sm,
   },
   emptySubtitle: {
     color: colors.textMuted,
     fontSize: 14,
+    fontFamily: typography.fontFamilyPlatform as string,
     lineHeight: 20,
     textAlign: 'center',
   },

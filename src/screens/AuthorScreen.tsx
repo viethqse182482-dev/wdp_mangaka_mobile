@@ -1,372 +1,731 @@
+/**
+ * AuthorScreen — trang tác giả với header glass + FlatList grid các series.
+ *
+ *  - Avatar ring glow accent.
+ *  - 3 stat card glass.
+ *  - Follow button gradient.
+ *  - Series row glass card.
+ */
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  Alert,
+  FlatList,
+  ListRenderItem,
   Pressable,
-  ScrollView,
-  StatusBar,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AuthorHeader } from '../components/author/AuthorHeader';
-import { AuthorBio } from '../components/author/AuthorBio';
-import { AuthorStatsBar } from '../components/author/AuthorStatsBar';
-import {
-  AuthorSeriesFilter,
-  AuthorSeriesGrid,
-} from '../components/author/AuthorSeriesGrid';
-import { BottomTabBar } from '../components/home/BottomTabBar';
-import { AccountDrawer } from '../components/home/AccountDrawer';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
-import { useMainTabNavigation } from '../hooks/useMainTabNavigation';
 import { useStoryNavigation } from '../hooks/useStoryNavigation';
+import { AuthorProfile, fetchAuthorProfile, fetchAuthorSeries } from '../services/authorService';
+import { ApiError } from '../services/apiClient';
 import {
-  AuthorProfile,
-  AuthorSeriesParams,
-  fetchAuthorProfile,
-  fetchAuthorSeries,
-} from '../services/authorService';
-import { AuthorSeriesResult } from '../services/authorService';
-import { colors, spacing } from '../theme/colors';
+  followAuthor,
+  getFollowAuthorStatus,
+  unfollowAuthor,
+} from '../services/followAuthorService';
+import { Story } from '../types/story';
+import { colors, radius, spacing, typography } from '../theme/colors';
+import { GlassCard, GlassIconButton, GradientButton, Tag } from '../theme/uiPrimitives';
+import { formatCompactNumber } from '../utils/formatNumber';
 
-const PAGE_SIZE = 20;
+interface AuthorSeriesResult {
+  stories: Story[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
 
 export function AuthorScreen() {
-  const router = useRouter();
   const { authorId } = useLocalSearchParams<{ authorId: string }>();
-
-  const { openStory, loginPromptModal: storyLoginModal } = useStoryNavigation();
-  const {
-    handleTabPress,
-    accountDrawerVisible,
-    setAccountDrawerVisible,
-    handleAccountMenuPress,
-    loginPromptModal: tabLoginPromptModal,
-  } = useMainTabNavigation('library');
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { openStory } = useStoryNavigation();
 
   const [profile, setProfile] = useState<AuthorProfile | null>(null);
   const [seriesResult, setSeriesResult] = useState<AuthorSeriesResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingSeries, setLoadingSeries] = useState(false);
-  const [profileError, setProfileError] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<AuthorSeriesFilter>('all');
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [page, setPage] = useState(1);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
+  // Local override của `profile.stats.total_followers` để phản hồi tức thì
+  // khi user bấm follow/unfollow. Nếu BE fail → rollback về giá trị cũ.
+  // Sync lại mỗi khi `profile` thay đổi (refresh / load mới) để giữ
+  // single source of truth là server.
+  const [followerOverride, setFollowerOverride] = useState<number | null>(null);
 
   const loadProfile = useCallback(async () => {
     if (!authorId) return;
     try {
-      const data = await fetchAuthorProfile(authorId);
-      setProfile(data);
-      setProfileError(false);
-    } catch {
-      setProfileError(true);
+      const [profileData, followStatus] = await Promise.all([
+        fetchAuthorProfile(authorId),
+        getFollowAuthorStatus(authorId).catch(() => false),
+      ]);
+      setProfile(profileData);
+      setIsFollowing(followStatus);
+    } catch (error) {
+      console.error('Failed to load author profile:', error);
     }
   }, [authorId]);
 
-  const loadSeries = useCallback(
-    async (opts: { page?: number; filter?: AuthorSeriesFilter; refresh?: boolean } = {}) => {
-      if (!authorId) return;
-      const { page: p = 1, filter = activeFilter, refresh = false } = opts;
-
-      if (refresh) {
-        setRefreshing(true);
-      } else if (p === 1) {
-        setLoadingSeries(true);
-      }
-
-      try {
-        const params: AuthorSeriesParams = {
-          page: p,
-          limit: PAGE_SIZE,
-          sort: 'updatedAt',
-        };
-
-        if (filter !== 'all') {
-          params.publication_status = filter;
-        }
-
-        const result = await fetchAuthorSeries(authorId, params);
-
-        if (p === 1) {
-          setSeriesResult(result);
-        } else {
-          setSeriesResult((prev) =>
-            prev
-              ? {
-                  ...result,
-                  stories: [...prev.stories, ...result.stories],
-                }
-              : result,
-          );
-        }
-
-        setHasMore(result.stories.length >= PAGE_SIZE);
-        setPage(p);
-      } catch {
-        // series load error — silently keep existing data
-      } finally {
-        setLoadingSeries(false);
-        setRefreshing(false);
-      }
-    },
-    [authorId, activeFilter],
-  );
-
-  // Initial load
-  useEffect(() => {
+  const loadSeries = useCallback(async (page = 1) => {
     if (!authorId) return;
-    let mounted = true;
+    try {
+      const result = await fetchAuthorSeries(authorId, { page, limit: 20 });
+      if (page === 1) {
+        setSeriesResult(result);
+      } else {
+        setSeriesResult((prev) =>
+          prev
+            ? {
+                ...result,
+                stories: [...prev.stories, ...result.stories],
+              }
+            : result,
+        );
+      }
+    } catch (error) {
+      console.error('Failed to load author series:', error);
+    }
+  }, [authorId]);
 
-    (async () => {
-      setLoading(true);
-      setProfileError(false);
-      await loadProfile();
-      if (mounted) setLoading(false);
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [authorId, loadProfile]);
-
-  // Load series after profile loaded
-  useEffect(() => {
-    if (!profile || !authorId) return;
-    let mounted = true;
-    void loadSeries({ page: 1 });
-
-    return () => {
-      mounted = false;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?._id, activeFilter]);
-
-  const handleRefresh = useCallback(async () => {
-    await Promise.all([loadProfile(), loadSeries({ page: 1, refresh: true })]);
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadProfile(), loadSeries(1)]);
+    setLoading(false);
   }, [loadProfile, loadSeries]);
 
-  const handleLoadMore = useCallback(() => {
-    if (!hasMore || loadingSeries) return;
-    void loadSeries({ page: page + 1 });
-  }, [hasMore, loadingSeries, page, loadSeries]);
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
-  const handleFilterChange = useCallback((filter: AuthorSeriesFilter) => {
-    setActiveFilter(filter);
-    setHasMore(false);
-  }, []);
+  // Reset followerOverride khi profile mới được fetch từ server (refresh /
+  // focus) — đảm bảo single source of truth là server, override chỉ tồn
+  // tại trong phiên tương tác follow/unfollow hiện tại.
+  useEffect(() => {
+    setFollowerOverride(null);
+  }, [profile?.stats.total_followers]);
 
-  const handleStoryPress = useCallback(
-    (storyId: string) => {
-      void openStory(storyId);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadAll();
+    setRefreshing(false);
+  }, [loadAll]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (!seriesResult || loadingMore) return;
+    const { pagination } = seriesResult;
+    if (pagination.page >= pagination.total) return;
+    setLoadingMore(true);
+    await loadSeries(pagination.page + 1);
+    setLoadingMore(false);
+  }, [seriesResult, loadingMore, loadSeries]);
+
+  const handleFollow = useCallback(async () => {
+    if (!authorId) return;
+    if (followLoading) return;
+
+    setFollowLoading(true);
+    // Snapshot để rollback nếu BE fail (auth lỗi 401, network lỗi, BE 5xx...).
+    const previousFollowing = isFollowing;
+    const previousFollowers = followerOverride ?? profile?.stats.total_followers ?? 0;
+    const nextFollowing = !previousFollowing;
+    const optimisticDelta = nextFollowing ? 1 : -1;
+
+    // Optimistic update UI ngay — cả `isFollowing` lẫn `followerOverride`.
+    setIsFollowing(nextFollowing);
+    setFollowerOverride(previousFollowers + optimisticDelta);
+
+    try {
+      if (nextFollowing) {
+        await followAuthor(authorId);
+      } else {
+        await unfollowAuthor(authorId);
+      }
+      // Thành công: giữ nguyên override. Có thể re-fetch profile để lấy
+      // `total_followers` chính xác từ server (tránh lệch nếu có concurrent
+      // follow/unfollow từ session khác).
+    } catch (error: unknown) {
+      // Rollback toàn bộ state về snapshot.
+      setIsFollowing(previousFollowing);
+      setFollowerOverride(previousFollowers);
+      if (error instanceof ApiError && error.status === 401) {
+        setLoginModalVisible(true);
+      } else {
+        // Báo lỗi nhẹ (silent fail cũ hơn — user không biết tại sao số không đổi).
+        const msg = error instanceof Error ? error.message : 'Vui lòng thử lại.';
+        Alert.alert('Không thể cập nhật', msg);
+      }
+    } finally {
+      setFollowLoading(false);
+    }
+  }, [authorId, followLoading, isFollowing, followerOverride, profile?.stats.total_followers]);
+
+  const handleSeriesPress = useCallback(
+    (series: Story) => {
+      void openStory(series.id);
     },
     [openStory],
   );
 
-  const handleLoginRequired = useCallback(() => {
-    setShowLoginModal(true);
-  }, []);
+  const renderSeriesItem: ListRenderItem<Story> = useCallback(
+    ({ item }) => (
+      <SeriesCard series={item} onPress={() => handleSeriesPress(item)} />
+    ),
+    [handleSeriesPress],
+  );
 
-  const handleLoginFromModal = useCallback(() => {
-    const redirect = authorId ? `/author/${authorId}` : undefined;
-    setShowLoginModal(false);
-    if (redirect) {
-      router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-    }
-  }, [authorId, router]);
+  const renderSeriesSeparator = useCallback(() => <View style={styles.seriesSeparator} />, []);
 
-  const handleCloseLoginModal = useCallback(() => {
-    setShowLoginModal(false);
-    router.back();
-  }, [router]);
+  const renderSeriesFooter = useCallback(() => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.seriesFooter}>
+        <ActivityIndicator size="small" color={colors.accent} />
+      </View>
+    );
+  }, [loadingMore]);
 
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, styles.centered]}>
+        <LinearGradient
+          colors={colors.gradBg}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <ActivityIndicator size="large" color={colors.accentLight} />
+      </View>
     );
   }
 
-  // ── Error / Not found ──────────────────────────────────────────────────────
-  if (profileError || !profile) {
+  if (!profile) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <View style={styles.centered}>
-          <View style={styles.errorIcon}>
-            <Ionicons name="alert-circle-outline" size={36} color={colors.danger} />
-          </View>
-          <Text style={styles.errorTitle}>Không tìm thấy tác giả</Text>
-          <Text style={styles.errorSubtitle}>
-            Tác giả này không tồn tại hoặc đã bị khóa.
-          </Text>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={16} color={colors.accent} />
-            <Text style={styles.backButtonText}>Quay lại</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, styles.centered]}>
+        <LinearGradient
+          colors={colors.gradBg}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <Ionicons name="person-outline" size={48} color={colors.textMuted} />
+        <Text style={styles.errorText}>Không tìm thấy tác giả</Text>
+        <Pressable onPress={handleBack} style={styles.backButton}>
+          <Text style={styles.backButtonText}>Quay lại</Text>
+        </Pressable>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+    <View style={[styles.container]}>
+      <LinearGradient
+        colors={colors.gradBg}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View pointerEvents="none" style={[styles.glowA, { top: -60, right: -80 }]} />
+      <View pointerEvents="none" style={[styles.glowB, { top: 120, left: -100 }]} />
 
       {/* Top bar */}
-      <View style={styles.topBar}>
-        <Pressable
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <GlassIconButton
+          icon="chevron-back"
+          size={40}
+          tint="light"
           onPress={handleBack}
-          hitSlop={8}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.topBarTitle} numberOfLines={1}>
-          {profile.full_name || profile.username || 'Tác giả'}
-        </Text>
-        <View style={styles.topBarSpacer} />
+        />
+        <Text style={styles.headerTitle}>Tác Giả</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <FlatList
+        data={seriesResult?.stories ?? []}
+        keyExtractor={(item) => item.id}
+        renderItem={renderSeriesItem}
+        ItemSeparatorComponent={renderSeriesSeparator}
+        ListHeaderComponent={
+          <AuthorHeader
+            profile={profile}
+            isFollowing={isFollowing}
+            followLoading={followLoading}
+            displayFollowers={
+              followerOverride ?? profile.stats.total_followers
+            }
+            onFollow={handleFollow}
+          />
+        }
+        ListFooterComponent={renderSeriesFooter}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptySeries}>
+              <Text style={styles.emptyText}>Tác giả chưa có truyện nào</Text>
+            </View>
+          ) : null
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <AuthorHeader profile={profile} onLoginRequired={handleLoginRequired} />
-        <AuthorBio bio={profile.bio} socialLinks={profile.social_links} />
-        <AuthorStatsBar stats={profile.stats} />
-        <AuthorSeriesGrid
-          series={seriesResult?.stories ?? []}
-          loading={loadingSeries}
-          refreshing={refreshing}
-          hasMore={hasMore}
-          activeFilter={activeFilter}
-          onFilterChange={handleFilterChange}
-          onStoryPress={handleStoryPress}
-          onRefresh={handleRefresh}
-          onLoadMore={handleLoadMore}
-        />
-      </ScrollView>
-
-      <BottomTabBar activeTab="library" onTabPress={handleTabPress} />
-
-      <AccountDrawer
-        visible={accountDrawerVisible}
-        onClose={() => setAccountDrawerVisible(false)}
-        onMenuPress={handleAccountMenuPress}
       />
 
       <LoginRequiredModal
-        visible={showLoginModal}
-        onClose={handleCloseLoginModal}
-        onLogin={handleLoginFromModal}
+        visible={loginModalVisible}
+        onClose={() => setLoginModalVisible(false)}
+        onLogin={() => {
+          setLoginModalVisible(false);
+          router.push('/login');
+        }}
       />
-      {storyLoginModal}
-      {tabLoginPromptModal}
-    </SafeAreaView>
+    </View>
+  );
+}
+
+// (no-op)
+
+interface AuthorHeaderProps {
+  profile: AuthorProfile;
+  isFollowing: boolean;
+  followLoading: boolean;
+  displayFollowers: number;
+  onFollow: () => void;
+}
+
+function AuthorHeader({
+  profile,
+  isFollowing,
+  followLoading,
+  displayFollowers,
+  onFollow,
+}: AuthorHeaderProps) {
+  return (
+    <View style={styles.authorHeader}>
+      {/* Avatar */}
+      <View style={styles.avatarContainer}>
+        {profile.avatar_url ? (
+          <Image source={{ uri: profile.avatar_url }} style={styles.avatar} transition={250} />
+        ) : (
+          <LinearGradient
+            colors={colors.gradPrimary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatarGradient}
+          >
+            <Text style={styles.avatarInitial}>
+              {profile.full_name?.charAt(0)?.toUpperCase() ?? 'A'}
+            </Text>
+          </LinearGradient>
+        )}
+      </View>
+
+      <Text style={styles.authorName}>{profile.full_name || profile.username}</Text>
+      {profile.username && profile.full_name !== profile.username && (
+        <Text style={styles.authorUsername}>@{profile.username}</Text>
+      )}
+
+      {profile.bio ? <Text style={styles.authorBio}>{profile.bio}</Text> : null}
+
+      <View style={styles.statsContainer}>
+        <StatItem
+          icon="book-outline"
+          value={formatCompactNumber(profile.stats.total_series)}
+          label="Truyện"
+          accent={colors.accentLight}
+        />
+        <StatItem
+          icon="eye-outline"
+          value={formatCompactNumber(displayFollowers)}
+          label="Followers"
+          accent={colors.cyan}
+        />
+        <StatItem
+          icon="star-outline"
+          value={profile.stats.average_rating?.toFixed(1) ?? '0.0'}
+          label="Điểm TB"
+          accent={colors.warning}
+        />
+      </View>
+
+      <GradientButton
+        label={isFollowing ? 'Đang Follow' : 'Follow'}
+        icon={isFollowing ? 'checkmark-circle' : 'add'}
+        onPress={onFollow}
+        loading={followLoading}
+        variant={isFollowing ? 'secondary' : 'primary'}
+        size="md"
+        glow={!isFollowing}
+        style={{ minWidth: 200, marginBottom: spacing.lg }}
+      />
+
+      <View style={styles.seriesHeader}>
+        <Text style={styles.seriesTitle}>
+          Truyện đã đăng ({profile.stats.total_series})
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+interface StatItemProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string;
+  label: string;
+  accent: string;
+}
+
+function StatItem({ icon, value, label, accent }: StatItemProps) {
+  return (
+    <GlassCard
+      tint="dark"
+      depth={1}
+      style={styles.statCard}
+      innerStyle={styles.statCardInner}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: `${accent}22` }]}>
+        <Ionicons name={icon} size={20} color={accent} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </GlassCard>
+  );
+}
+
+interface SeriesCardProps {
+  series: Story;
+  onPress: () => void;
+}
+
+function SeriesCard({ series, onPress }: SeriesCardProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.cardWrap, pressed && styles.cardPressed]}
+    >
+      <GlassCard
+        tint="dark"
+        depth={1}
+        style={styles.card}
+        innerStyle={styles.cardInner}
+      >
+        {series.coverUrl ? (
+          <Image source={{ uri: series.coverUrl }} style={styles.cardCover} transition={250} />
+        ) : (
+          <View style={styles.cardCoverPlaceholder}>
+            <Ionicons name="image-outline" size={24} color={colors.textMuted} />
+          </View>
+        )}
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {series.title}
+          </Text>
+          {series.genres && series.genres.length > 0 && (
+            <View style={styles.cardGenreRow}>
+              {series.genres.slice(0, 2).map((g, i) => (
+                <Tag key={i} label={g} variant="default" size="sm" />
+              ))}
+            </View>
+          )}
+          <View style={styles.cardStats}>
+            <View style={styles.cardStat}>
+              <Ionicons name="eye-outline" size={12} color={colors.cyan} />
+              <Text style={styles.cardStatText}>{formatCompactNumber(series.views)}</Text>
+            </View>
+            {series.rating && series.rating > 0 ? (
+              <View style={styles.cardStat}>
+                <Ionicons name="star" size={12} color={colors.warning} />
+                <Text style={styles.cardStatText}>{series.rating.toFixed(1)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.cardStat}>
+              <Ionicons name="book-outline" size={12} color={colors.accentLight} />
+              <Text style={styles.cardStatText}>
+                {series.latestChapter > 0 ? `Chương ${series.latestChapter}` : 'Mới'}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+      </GlassCard>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: colors.background,
   },
+  glowA: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.accent,
+    opacity: 0.18,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 100,
+  },
+  glowB: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: colors.cyan,
+    opacity: 0.12,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.6,
+    shadowRadius: 100,
+  },
   centered: {
-    flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xl,
+    alignItems: 'center',
     gap: spacing.md,
   },
-  topBar: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
+    zIndex: 10,
   },
-  backBtn: {
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.textPrimary,
+    fontSize: 17,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  listContent: {
+    paddingBottom: spacing.xl,
+  },
+  authorHeader: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  avatarContainer: {
+    marginBottom: spacing.md,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  avatarGradient: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: colors.white,
+    fontSize: 36,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+  },
+  authorName: {
+    color: colors.textPrimary,
+    fontSize: 22,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  authorUsername: {
+    color: colors.cyan,
+    fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  authorBio: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: radius.lg,
+  },
+  statCardInner: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    gap: 4,
+  },
+  statIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topBarTitle: {
-    flex: 1,
+  statValue: {
     color: colors.textPrimary,
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    marginTop: 4,
   },
-  topBarSpacer: {
-    width: 36,
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fontFamilyMedium,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 80,
+  seriesHeader: {
+    width: '100%',
+    paddingTop: spacing.md,
   },
-  errorIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  errorTitle: {
+  seriesTitle: {
     color: colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
+    fontSize: 17,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  errorSubtitle: {
+  seriesSeparator: {
+    height: spacing.xs,
+  },
+  seriesFooter: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+  emptySeries: {
+    paddingVertical: spacing.xxl,
+    alignItems: 'center',
+  },
+  emptyText: {
     color: colors.textMuted,
     fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
+    fontFamily: typography.fontFamilyMedium,
+  },
+  errorText: {
+    color: colors.textSecondary,
+    fontSize: 16,
+    fontFamily: typography.fontFamilyMedium,
   },
   backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
     marginTop: spacing.md,
   },
   backButtonText: {
-    color: colors.accent,
+    color: colors.white,
     fontSize: 14,
-    fontWeight: '600',
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
   },
-  pressed: {
-    opacity: 0.7,
+  cardPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.98 }],
+  },
+  cardWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  card: {
+    borderRadius: radius.lg,
+  },
+  cardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  cardCover: {
+    width: 64,
+    height: 88,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+  },
+  cardCoverPlaceholder: {
+    width: 64,
+    height: 88,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  cardTitle: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  cardGenreRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  cardStats: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  cardStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardStatText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
   },
 });
 

@@ -1,6 +1,14 @@
+/**
+ * LoginRequiredModal — modal yêu cầu đăng nhập.
+ *
+ *  - Backdrop màu tối.
+ *  - Card khối màu với gradient icon + 2 button (login gradient + cancel).
+ */
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { GlassCard, GradientButton } from '../../theme/uiPrimitives';
 
 interface LoginRequiredModalProps {
   visible: boolean;
@@ -12,32 +20,56 @@ export function LoginRequiredModal({ visible, onClose, onLogin }: LoginRequiredM
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Pressable style={styles.backdropTouch} onPress={onClose}>
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: 'rgba(7,11,26,0.7)' },
+            ]}
+          />
+        </Pressable>
 
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="lock-closed-outline" size={28} color={colors.accent} />
-          </View>
+        <View style={styles.cardOuter}>
+          <GlassCard tint="dark" depth={4} radius={radius.xl} style={{ width: '100%', maxWidth: 360 }}>
+            <View style={styles.cardInner}>
+              <View style={styles.iconWrap}>
+                <LinearGradient
+                  colors={colors.gradPrimary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.iconInner}
+                >
+                  <Ionicons name="lock-closed-outline" size={28} color={colors.white} />
+                </LinearGradient>
+              </View>
 
-          <Text style={styles.title}>Chưa đăng nhập</Text>
-          <Text style={styles.message}>
-            Bạn chưa đăng nhập. Vui lòng đăng nhập để đọc truyện.
-          </Text>
+              <Text style={styles.title}>Chưa đăng nhập</Text>
+              <Text style={styles.message}>
+                Bạn cần đăng nhập để sử dụng tính năng này.
+              </Text>
 
-          <Pressable
-            onPress={onLogin}
-            style={({ pressed }) => [styles.loginButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.loginButtonText}>Đăng nhập ngay</Text>
-          </Pressable>
+              <GradientButton
+                label="Đăng nhập ngay"
+                icon="log-in-outline"
+                onPress={onLogin}
+                size="md"
+                fullWidth
+                glow
+                style={{ alignSelf: 'stretch' }}
+              />
 
-          <Pressable
-            onPress={onClose}
-            hitSlop={8}
-            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.cancelText}>Đóng</Text>
-          </Pressable>
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.cancelButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.cancelText}>Để sau</Text>
+              </Pressable>
+            </View>
+          </GlassCard>
         </View>
       </View>
     </Modal>
@@ -51,61 +83,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
   },
-  backdrop: {
+  backdropTouch: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
-  card: {
+  cardOuter: {
     width: '100%',
-    maxWidth: 320,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    maxWidth: 360,
+  },
+  cardInner: {
     padding: spacing.xl,
     alignItems: 'center',
   },
   iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accentSoft,
+    marginBottom: spacing.md,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  iconInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
   },
   title: {
     color: colors.textPrimary,
-    fontSize: 18,
+    fontSize: 20,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '800',
     marginBottom: spacing.sm,
+    letterSpacing: -0.3,
   },
   message: {
     color: colors.textSecondary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyPlatform as string,
     lineHeight: 20,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
-  loginButton: {
-    width: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  loginButtonText: {
-    color: colors.white,
-    fontSize: 15,
-    fontWeight: '700',
-  },
   cancelButton: {
     paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
   },
   cancelText: {
     color: colors.textMuted,
     fontSize: 14,
+    fontFamily: typography.fontFamilyMedium,
     fontWeight: '600',
   },
   pressed: {

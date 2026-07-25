@@ -1,9 +1,13 @@
+/**
+ * LibraryStoryRow — row trong Library dạng GlassListItem.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { BookshelfItem } from '../../services/bookshelfService';
 import { FeaturedStory } from '../../types/story';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { GlassListItem } from '../../theme/uiPrimitives';
 
 type LibraryStoryRowProps = {
   story: BookshelfItem | (FeaturedStory & { followedAt?: string });
@@ -23,60 +27,65 @@ export function LibraryStoryRow({ story, onPress, onRemove, removeLabel }: Libra
   const followedAt = 'followedAt' in story ? story.followedAt : null;
 
   return (
-    <Pressable
-      onPress={() => onPress(series._id)}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      <View style={styles.coverWrapper}>
-        {cover ? (
-          <Image source={{ uri: cover }} style={styles.cover} contentFit="cover" transition={200} />
-        ) : (
-          <View style={[styles.cover, styles.coverPlaceholder]}>
-            <Ionicons name="book-outline" size={24} color={colors.textMuted} />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
-          {name || 'Truyện chưa đặt tên'}
-        </Text>
-
-        {genres.length > 0 ? (
-          <Text style={styles.genres} numberOfLines={1}>
-            {genres.join(' · ')}
-          </Text>
-        ) : null}
-
-        <View style={styles.metaRow}>
-          <Text style={styles.chapter}>
-            {totalChapters > 0
-              ? latest != null
-                ? `Chương ${latest}/${totalChapters}`
-                : `${totalChapters} chương`
-              : 'Chưa có chương'}
-          </Text>
-          {followedAt ? (
-            <>
-              <Text style={styles.dot}>•</Text>
-              <Text style={styles.updatedAt}>{formatDate(followedAt)}</Text>
-            </>
-          ) : null}
-        </View>
-      </View>
-
-      <Pressable
-        onPress={() => onRemove(series._id)}
-        hitSlop={8}
-        style={({ pressed }) => [styles.unfollowButton, pressed && styles.pressed]}
+    <View style={styles.row}>
+      <GlassListItem
+        tint="navy"
+        depth={1}
+        radius={radius.lg}
+        onPress={() => onPress((series as any)._id ?? (series as any).id)}
+        innerStyle={styles.cardInner}
       >
-        <Ionicons
-          name={removeLabel === 'Bỏ theo dõi' ? 'heart' : 'bookmark'}
-          size={20}
-          color={colors.accent}
-        />
-      </Pressable>
-    </Pressable>
+        <View style={styles.coverWrapper}>
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.cover} contentFit="cover" transition={200} />
+          ) : (
+            <View style={[styles.cover, styles.coverPlaceholder]}>
+              <Ionicons name="book-outline" size={24} color={colors.textMuted} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={2}>
+            {name || 'Truyện chưa đặt tên'}
+          </Text>
+
+          {genres.length > 0 ? (
+            <Text style={styles.genres} numberOfLines={1}>
+              {genres.join(' · ')}
+            </Text>
+          ) : null}
+
+          <View style={styles.metaRow}>
+            <Text style={styles.chapter}>
+              {totalChapters > 0
+                ? latest != null
+                  ? `Chương ${latest}/${totalChapters}`
+                  : `${totalChapters} chương`
+                : 'Chưa có chương'}
+            </Text>
+            {followedAt ? (
+              <>
+                <Text style={styles.dot}>•</Text>
+                <Text style={styles.updatedAt}>{formatDate(followedAt)}</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => onRemove((series as any)._id ?? (series as any).id)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.unfollowButton, pressed && styles.pressed]}
+        >
+          <Ionicons
+            name={removeLabel === 'Bỏ theo dõi' ? 'heart' : 'bookmark'}
+            size={18}
+            color={colors.accentLight}
+          />
+        </Pressable>
+      </GlassListItem>
+    </View>
   );
 }
 
@@ -96,16 +105,19 @@ function formatDate(iso: string): string {
   }
 }
 
-const COVER_WIDTH = 64;
-const COVER_HEIGHT = 92;
+const COVER_WIDTH = 60;
+const COVER_HEIGHT = 86;
 
 const styles = StyleSheet.create({
   row: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  cardInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    padding: spacing.md,
   },
   coverWrapper: {
     width: COVER_WIDTH,
@@ -113,6 +125,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.surface,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   cover: {
     width: '100%',
@@ -129,13 +145,16 @@ const styles = StyleSheet.create({
   title: {
     color: colors.textPrimary,
     fontSize: 15,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
     lineHeight: 20,
+    letterSpacing: -0.1,
   },
   genres: {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 4,
+    fontFamily: typography.fontFamilyMedium,
   },
   metaRow: {
     flexDirection: 'row',
@@ -144,8 +163,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   chapter: {
-    color: colors.accent,
+    color: colors.cyan,
     fontSize: 12,
+    fontFamily: typography.fontFamilyMedium,
     fontWeight: '600',
   },
   dot: {
@@ -155,16 +175,19 @@ const styles = StyleSheet.create({
   updatedAt: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontFamily: typography.fontFamilyMedium,
   },
   unfollowButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   pressed: {
     opacity: 0.75,

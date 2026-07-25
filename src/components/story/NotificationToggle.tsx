@@ -98,7 +98,7 @@ export function NotificationToggle({
             color={isSubscribed ? colors.accent : colors.textPrimary}
           />
           <Text style={[styles.text, isSubscribed && styles.textActive]}>
-            {isSubscribed ? 'Bật thông báo' : 'Thông báo'}
+            {isSubscribed ? 'Đang nhận thông báo' : 'Thông báo'}
           </Text>
         </>
       )}
@@ -118,6 +118,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   buttonActive: {
     borderColor: colors.accent,

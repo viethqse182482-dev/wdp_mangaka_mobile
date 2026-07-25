@@ -1,9 +1,9 @@
-export function formatCompactNumber(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1).replace('.0', '')}M`;
+export function formatCompactNumber(num: number): string {
+  if (num >= 1_000_000) {
+    return `${(num / 1_000_000).toFixed(1)}M`;
   }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1).replace('.0', '')}K`;
+  if (num >= 1_000) {
+    return `${(num / 1_000).toFixed(1)}K`;
   }
-  return String(value);
+  return num.toString();
 }

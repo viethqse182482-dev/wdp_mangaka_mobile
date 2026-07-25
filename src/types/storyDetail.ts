@@ -3,6 +3,7 @@ export interface Chapter {
   number: number;
   releasedAt: string;
   views: number;
+  coverUrl?: string;
 }
 
 export interface StoryComment {
@@ -14,6 +15,7 @@ export interface StoryComment {
   content: string;
   createdAt: string;
   replyTo?: string;
+  readerId?: string;
 }
 
 export interface StoryDetail {
@@ -23,6 +25,12 @@ export interface StoryDetail {
   coverUrl: string;
   latestChapter: number;
   updatedAt: string;
+  /**
+   * ISO timestamp của chapter mới nhất publish.
+   * Lấy từ `Series.last_chapter_published_at` của BE (chỉ bump khi publish chapter,
+   * không bị ảnh hưởng bởi vote/comment/view như `updatedAt`).
+   */
+  latestChapterPublishedAt?: string | null;
   views: number;
   genres: string[];
   author: string;

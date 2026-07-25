@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
 import { getAuthToken } from '../services/authService';
-import { recordReadingHistory } from '../services/readingHistoryService';
 
 export function useStoryNavigation() {
   const router = useRouter();
@@ -17,18 +16,11 @@ export function useStoryNavigation() {
         return;
       }
 
-      // Record một entry tối thiểu để lịch sử đọc biết user đã mở truyện.
-      // StoryDetail thật sẽ được fetch chi tiết khi vào màn StoryDetail.
-      void recordReadingHistory({
-        id: storyId,
-        title: '',
-        coverUrl: '',
-        latestChapter: 0,
-        updatedAt: '',
-        views: 0,
-        genres: [],
-      });
-
+      // KHÔNG ghi lịch sử ở đây. Lịch sử đọc chỉ được ghi khi user thật sự
+      // mở ReaderScreen (xử lý trong ReaderScreen.useEffect). Ghi tại đây với
+      // data rỗng (title='', coverUrl='', latestChapter=0) sẽ tạo entry
+      // history xấu + có thể upsert lastReadChapter=0 lên server, làm hỏng
+      // hiển thị "Tiếp tục đọc" trên StoryDetailScreen.
       router.push(`/story/${storyId}`);
     },
     [router],

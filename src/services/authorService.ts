@@ -66,7 +66,10 @@ interface BeAuthorSeriesResponse {
 
 interface BeAuthorFollowersCountResponse {
   success: boolean;
-  count: number;
+  data: {
+    author_id: string;
+    followers_count: number;
+  };
 }
 
 async function requireToken(): Promise<string> {
@@ -162,5 +165,5 @@ export async function fetchAuthorFollowersCount(authorId: string): Promise<numbe
     `/authors/${encodeURIComponent(authorId)}/followers/count`,
     {},
   );
-  return response.success ? response.count : 0;
+  return response.success ? response.data.followers_count : 0;
 }

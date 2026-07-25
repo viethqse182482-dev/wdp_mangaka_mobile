@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Link, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AuthorProfile } from '../../services/authorService';
 import { colors, radius, spacing } from '../../theme/colors';
 
@@ -49,7 +49,6 @@ export function AuthorBio({ bio, socialLinks }: AuthorBioProps) {
                 onPress={() => {
                   // expo-linking handles URL opening
                 }}
-                href={url}
                 style={({ pressed }) => [styles.socialChip, pressed && styles.pressed]}
               >
                 <Ionicons name={item.icon} size={14} color={colors.accent} />

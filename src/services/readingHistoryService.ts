@@ -100,31 +100,36 @@ export async function recordReadingHistory(
   }
 }
 
-export async function removeHistoryEntry(storyId: string): Promise<void> {
-  if (!storyId) return;
+export async function removeHistoryEntry(storyId: string): Promise<boolean> {
+  if (!storyId) return false;
   const token = await getAuthToken();
-  if (!token) return;
+  if (!token) return false;
 
   try {
-    await apiDelete<{ success: boolean; removed: boolean }>(
+    const response = await apiDelete<{ success: boolean; removed: boolean }>(
       `/reader/history/${encodeURIComponent(storyId)}`,
       { token },
     );
+    // Trả về `success` từ server. `removed` là BE confirm thật sự xóa.
+    // Chỉ return true khi cả 2 true — nếu server thành công nhưng removed=false
+    // (entry không tồn tại) vẫn coi là success về mặt UX.
+    return response.success;
   } catch {
-    // ignore
+    return false;
   }
 }
 
-export async function clearReadingHistory(): Promise<void> {
+export async function clearReadingHistory(): Promise<boolean> {
   const token = await getAuthToken();
-  if (!token) return;
+  if (!token) return false;
 
   try {
-    await apiDelete<{ success: boolean; deleted: number }>(
+    const response = await apiDelete<{ success: boolean; deleted: number }>(
       '/reader/history',
       { token },
     );
+    return response.success;
   } catch {
-    // ignore
+    return false;
   }
 }

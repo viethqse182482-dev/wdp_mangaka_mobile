@@ -18,11 +18,14 @@ function slugify(name: string): string {
 }
 
 async function fetchBackendGenreNames(): Promise<string[]> {
+  // BE `/reader/genres` dùng `optionalAuth` nên cho phép khách chưa đăng nhập
+  // gọi. Không chặn khi không có token.
   const token = await getAuthToken();
-  if (!token) return [];
 
   try {
-    const response = await apiGet<BEStringListResponse>('/reader/genres', { token });
+    const response = await apiGet<BEStringListResponse>('/reader/genres', {
+      token: token || undefined,
+    });
     if (!response.success || !Array.isArray(response.data)) {
       return [];
     }

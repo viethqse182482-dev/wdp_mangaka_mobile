@@ -1,147 +1,120 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+/**
+ * StoryOverview — phần tóm tắt + metadata sau khi refactor.
+ *
+ * Sau khi tách:
+ *  - Title đã có trong StoryHero (loại bỏ duplicate).
+ *  - Author đã có trong StoryAuthorCard (loại bỏ row TÁC GIẢ).
+ *
+ * Còn lại: synopsis + info grid (tên khác, trạng thái, cập nhật).
+ */
+import { StyleSheet, Text, View } from 'react-native';
 import { StoryDetail } from '../../types/storyDetail';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { GlassCard, Tag } from '../../theme/uiPrimitives';
 
 interface StoryOverviewProps {
   story: StoryDetail;
   onAuthorPress?: () => void;
 }
 
-export function StoryOverview({ story, onAuthorPress }: StoryOverviewProps) {
+export function StoryOverview({ story }: StoryOverviewProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{story.title}</Text>
+    <GlassCard
+      tint="navy"
+      depth={2}
+      radius={radius.lg}
+      innerStyle={styles.card}
+    >
+      {story.genres.length > 0 && (
+        <View style={styles.tags}>
+          {story.genres.map((genre) => (
+            <Tag key={genre} label={genre} variant="accent" size="sm" />
+          ))}
+        </View>
+      )}
 
-      <View style={styles.tags}>
-        {story.genres.map((genre) => (
-          <View key={genre} style={styles.tag}>
-            <Ionicons name="pricetag-outline" size={12} color={colors.textSecondary} />
-            <Text style={styles.tagText}>{genre}</Text>
-          </View>
-        ))}
-      </View>
+      {story.synopsis ? (
+        <View style={styles.synopsisWrap}>
+          <Text style={styles.sectionLabel}>NỘI DUNG</Text>
+          <Text style={styles.synopsis}>{story.synopsis}</Text>
+        </View>
+      ) : null}
 
-      <Text style={styles.synopsis}>{story.synopsis}</Text>
+      <View style={styles.divider} />
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thông Tin</Text>
-        <View style={styles.divider} />
-
-        <InfoRow label="TÊN KHÁC" value={story.altName} />
-        <InfoRow label="TÁC GIẢ" value={story.author} onPress={onAuthorPress} />
+      <View style={styles.metaGrid}>
+        <InfoRow label="TÊN KHÁC" value={story.altName || story.title} />
         <InfoRow label="TRẠNG THÁI" value={story.status} />
+        <InfoRow label="CẬP NHẬT" value={story.updatedAt} />
       </View>
-    </View>
+    </GlassCard>
   );
 }
 
-function InfoRow({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
-  const content = (
-    <Text
-      style={[
-        styles.infoValue,
-        onPress && styles.infoValueLink,
-      ]}
-      numberOfLines={2}
-    >
-      {value}
-    </Text>
-  );
-
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}:</Text>
-      {onPress ? (
-        <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed]}>
-          {content}
-        </Pressable>
-      ) : (
-        content
-      )}
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue} numberOfLines={2}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.lg,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 20,
-    fontWeight: '800',
-    lineHeight: 28,
+    gap: spacing.md,
   },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: spacing.xs,
   },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
+  synopsisWrap: {
+    gap: spacing.xs,
   },
-  tagText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   synopsis: {
     color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 22,
-    marginTop: spacing.lg,
-  },
-  section: {
-    marginTop: spacing.lg,
-  },
-  sectionTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
+    letterSpacing: -0.05,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
+    backgroundColor: colors.glassBorder,
+    marginVertical: spacing.xs,
+  },
+  metaGrid: {
+    gap: spacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    marginBottom: spacing.sm,
-    flexWrap: 'wrap',
   },
   infoLabel: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 10,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
+    minWidth: 90,
+    paddingTop: 2,
   },
   infoValue: {
-    color: colors.success,
+    color: colors.textPrimary,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
     fontWeight: '600',
     flex: 1,
-  },
-  infoValueLink: {
-    color: colors.accent,
-  },
-  pressed: {
-    opacity: 0.7,
   },
 });

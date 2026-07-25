@@ -1,5 +1,5 @@
-import AuthorScreen from '../src/screens/AuthorScreen';
+import { AuthorScreen } from '../../src/screens/AuthorScreen';
 
-export default function AuthorRoute() {
+export default function AuthorPage() {
   return <AuthorScreen />;
 }

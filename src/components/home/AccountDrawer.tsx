@@ -1,8 +1,29 @@
+/**
+ * AccountDrawer — drawer trượt từ trái với phong cách khối màu.
+ *
+ *  - Panel trái dùng nền màu đặc + glow accent.
+ *  - Backdrop màu tối (không blur).
+ *  - Header avatar gradient, list item trong GlassCard.
+ *  - Dialog "Đổi tên" dùng GlassModal với backdrop màu tối.
+ */
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, spacing } from '../../theme/colors';
+import { colors, radius, spacing, typography } from '../../theme/colors';
+import { GlassCard, GradientButton, GlassTextField } from '../../theme/uiPrimitives';
 import { getAuthUser } from '../../services/authService';
 import { AuthUser } from '../../types/auth';
 
@@ -12,39 +33,24 @@ interface MenuItem {
   key: string;
   label: string;
   icon: MenuIcon;
+  badge?: string;
   showChevron?: boolean;
 }
 
-const USER_INFO_TEMPLATE: MenuItem[] = [
-  { key: 'username', label: 'Đăng nhập', icon: 'person-outline' },
-  { key: 'level', label: 'Cấp Độ: 2', icon: 'ribbon-outline' },
-  { key: 'notifications', label: 'Thông Báo', icon: 'mail-outline' },
-];
-
 const ACCOUNT_FEATURE_ITEMS: MenuItem[] = [
-  { key: 'change-display-name', label: 'Đổi Tên Hiển Thị', icon: 'create-outline' },
-  { key: 'request-upgrade', label: 'Yêu Cầu Thăng Cấp', icon: 'construct-outline' },
+  { key: 'change-display-name', label: 'Đổi tên hiển thị', icon: 'create-outline' },
 ];
 
 const NAV_ITEMS: MenuItem[] = [
-  { key: 'home', label: 'Trang Chủ', icon: 'home-outline' },
-  { key: 'following', label: 'Truyện Theo Dõi', icon: 'walk-outline' },
-  { key: 'history', label: 'Truyện Đã Đọc', icon: 'time-outline' },
-  { key: 'genres', label: 'Thể Loại', icon: 'list-outline' },
-  { key: 'contact', label: 'Liên Hệ', icon: 'chatbox-ellipses-outline' },
+  { key: 'home', label: 'Trang chủ', icon: 'home-outline' },
+  { key: 'ranking', label: 'Bảng xếp hạng', icon: 'trophy-outline', showChevron: true },
+  { key: 'library', label: 'Tủ truyện', icon: 'bookmarks-outline', showChevron: true },
+  { key: 'history', label: 'Lịch sử đọc', icon: 'time-outline', showChevron: true },
+  { key: 'following', label: 'Đang theo dõi', icon: 'walk-outline' },
+  { key: 'genres', label: 'Thể loại', icon: 'list-outline', showChevron: true },
+  { key: 'notifications', label: 'Thông báo', icon: 'mail-outline', showChevron: true },
+  { key: 'contact', label: 'Liên hệ', icon: 'chatbox-ellipses-outline', showChevron: true },
 ];
-
-const LOGOUT_ITEM: MenuItem = {
-  key: 'logout',
-  label: 'Đăng Xuất',
-  icon: 'log-out-outline',
-};
-
-const LOGIN_ITEM: MenuItem = {
-  key: 'login',
-  label: 'Đăng Nhập',
-  icon: 'log-in-outline',
-};
 
 interface AccountDrawerProps {
   visible: boolean;
@@ -70,10 +76,17 @@ function MenuRow({
         pressed && styles.pressed,
       ]}
     >
-      <Ionicons name={item.icon} size={20} color={colors.textSecondary} />
+      <View style={styles.menuIconWrap}>
+        <Ionicons name={item.icon} size={18} color={colors.accentLight} />
+      </View>
       <Text style={styles.menuLabel}>{item.label}</Text>
+      {item.badge ? (
+        <View style={styles.menuBadge}>
+          <Text style={styles.menuBadgeText}>{item.badge}</Text>
+        </View>
+      ) : null}
       {item.showChevron ? (
-        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} style={styles.chevron} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       ) : null}
     </Pressable>
   );
@@ -93,17 +106,15 @@ function AccountFeaturesSection({
   }, [resetKey]);
 
   return (
-    <View style={styles.accountFeatures}>
+    <GlassCard tint="dark" depth={2} style={styles.accountFeatures}>
       <Pressable
         onPress={() => setExpanded((prev) => !prev)}
-        style={({ pressed }) => [
-          styles.accountFeaturesHeader,
-          expanded && styles.accountFeaturesHeaderExpanded,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.accountFeaturesHeader, pressed && styles.pressed]}
       >
-        <Ionicons name="person-circle-outline" size={20} color={colors.textPrimary} />
-        <Text style={styles.accountFeaturesTitle}>Tính Năng Tài Khoản</Text>
+        <View style={styles.menuIconWrap}>
+          <Ionicons name="person-circle-outline" size={18} color={colors.cyan} />
+        </View>
+        <Text style={styles.accountFeaturesTitle}>Tính năng tài khoản</Text>
         <Ionicons
           name={expanded ? 'chevron-down' : 'chevron-forward'}
           size={16}
@@ -118,7 +129,7 @@ function AccountFeaturesSection({
           ))}
         </View>
       ) : null}
-    </View>
+    </GlassCard>
   );
 }
 
@@ -128,6 +139,17 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [displayNameModalVisible, setDisplayNameModalVisible] = useState(false);
   const [displayName, setDisplayName] = useState('');
+
+  const slideAnim = useRef(new Animated.Value(-320)).current;
+
+  useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: visible ? 0 : -320,
+      duration: motion_base(),
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [visible, slideAnim]);
 
   useEffect(() => {
     if (visible) {
@@ -143,14 +165,7 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
     setDisplayName(authUser?.fullName || authUser?.username || '');
   }, [authUser, visible]);
 
-  const userInfoItems = USER_INFO_TEMPLATE.map((item) =>
-    item.key === 'username'
-      ? {
-          ...item,
-          label: authUser?.fullName || authUser?.username || 'Đăng nhập',
-        }
-      : item,
-  );
+  const displayName_ = authUser?.fullName || authUser?.username || 'Khách';
 
   const handleMenuPress = (key: string) => {
     if (key === 'change-display-name') {
@@ -165,25 +180,74 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
     }
 
     onMenuPress?.(key);
-    if (key === 'home') {
+    if (key === 'home' || key === 'login') {
       onClose();
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Pressable style={styles.backdropTouch} onPress={onClose}>
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: 'rgba(7,11,26,0.7)' },
+            ]}
+          />
+        </Pressable>
 
-        <View style={[styles.panel, { paddingTop: insets.top + spacing.md }]}>
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              paddingTop: insets.top + spacing.md,
+              transform: [{ translateX: slideAnim }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={colors.gradBg}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View pointerEvents="none" style={[styles.glowA, { top: -60, right: -40 }]} />
+          <View pointerEvents="none" style={[styles.glowB, { bottom: -80, left: -60 }]} />
+
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Tính Năng Tài Khoản</Text>
+            <View style={styles.headerLeft}>
+              <View style={styles.avatarWrap}>
+                <LinearGradient
+                  colors={colors.gradPrimary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatarBadge}
+                >
+                  <View style={styles.avatarInner}>
+                    <Ionicons
+                      name={authUser ? 'person' : 'person-outline'}
+                      size={28}
+                      color={colors.white}
+                    />
+                  </View>
+                </LinearGradient>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  {displayName_}
+                </Text>
+                <Text style={styles.headerSubtitle}>
+                  {authUser ? 'Tài khoản Reader' : 'Chưa đăng nhập'}
+                </Text>
+              </View>
+            </View>
             <Pressable
               onPress={onClose}
               hitSlop={8}
               style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
             >
-              <Ionicons name="close" size={22} color={colors.textPrimary} />
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
             </Pressable>
           </View>
 
@@ -193,108 +257,134 @@ export function AccountDrawer({ visible, onClose, onMenuPress }: AccountDrawerPr
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.section}>
-              {userInfoItems.map((item) => (
-                <MenuRow key={item.key} item={item} onPress={handleMenuPress} />
-              ))}
+              <AccountFeaturesSection
+                onMenuPress={handleMenuPress}
+                resetKey={drawerSession}
+              />
             </View>
 
-            <View style={styles.divider} />
-
             <View style={styles.section}>
-              <AccountFeaturesSection onMenuPress={handleMenuPress} resetKey={drawerSession} />
+              <Text style={styles.sectionLabel}>Khám phá</Text>
+              <GlassCard tint="dark" depth={1} style={styles.navCard}>
+                {NAV_ITEMS.map((item, idx) => (
+                  <View key={item.key}>
+                    <MenuRow item={item} onPress={handleMenuPress} />
+                    {idx < NAV_ITEMS.length - 1 ? (
+                      <View style={styles.navDivider} />
+                    ) : null}
+                  </View>
+                ))}
+              </GlassCard>
             </View>
 
-            <View style={styles.divider} />
-
             <View style={styles.section}>
-              {NAV_ITEMS.map((item) => (
-                <MenuRow key={item.key} item={item} onPress={handleMenuPress} />
-              ))}
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.section}>
-              <MenuRow
-                item={authUser ? LOGOUT_ITEM : LOGIN_ITEM}
-                onPress={handleMenuPress}
+              <GradientButton
+                label={authUser ? 'Đăng xuất' : 'Đăng nhập ngay'}
+                icon={authUser ? 'log-out-outline' : 'log-in-outline'}
+                onPress={() => handleMenuPress(authUser ? 'logout' : 'login')}
+                variant={authUser ? 'secondary' : 'primary'}
+                size="md"
+                fullWidth
+                glow={!authUser}
+                style={{ alignSelf: 'stretch' }}
               />
             </View>
           </ScrollView>
-        </View>
+        </Animated.View>
+      </View>
 
-        <Modal
-          visible={displayNameModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDisplayNameModalVisible(false)}
-        >
-          <View style={styles.dialogOverlay}>
-            <Pressable style={styles.dialogBackdrop} onPress={() => setDisplayNameModalVisible(false)} />
+      <Modal
+        visible={displayNameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDisplayNameModalVisible(false)}
+      >
+        <View style={styles.dialogOverlay}>
+          <Pressable
+            style={styles.dialogBackdropTouch}
+            onPress={() => setDisplayNameModalVisible(false)}
+          >
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: 'rgba(7,11,26,0.7)' },
+              ]}
+            />
+          </Pressable>
 
-            <View style={styles.dialogPanel}>
-              <View style={styles.dialogHeader}>
-                <Text style={styles.dialogTitle}>Đổi Tên Hiển Thị</Text>
-                <Pressable
-                  onPress={() => setDisplayNameModalVisible(false)}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.dialogCloseButton, pressed && styles.pressed]}
-                >
-                  <Ionicons name="close" size={24} color={colors.textPrimary} />
-                </Pressable>
-              </View>
+          <View style={styles.dialogPanelWrap}>
+            <GlassCard tint="dark" depth={3} radius={radius.xl} style={{ width: '100%', maxWidth: 380 }}>
+              <View style={{ padding: spacing.lg }}>
+                <View style={styles.dialogHeader}>
+                  <Text style={styles.dialogTitle}>Đổi tên hiển thị</Text>
+                  <Pressable
+                    onPress={() => setDisplayNameModalVisible(false)}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.dialogCloseButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="close" size={20} color={colors.textPrimary} />
+                  </Pressable>
+                </View>
 
-              <Text style={styles.dialogRule}>- Chức năng này chỉ dùng cho tài khoản cấp 2+</Text>
-              <Text style={styles.dialogRule}>- Một ngày chỉ được đổi một lần</Text>
-              <Text style={styles.dialogRule}>
-                - Tên và Danh hiệu không được chứa ký tự nhạy cảm, nếu vi phạm sẽ bị khóa chức năng
-              </Text>
-              <Text style={styles.dialogRule}>- Số ký tự giới hạn là 30</Text>
+                <View style={styles.ruleList}>
+                  <Text style={styles.dialogRule}>• Chức năng chỉ dành cho tài khoản cấp 2+</Text>
+                  <Text style={styles.dialogRule}>• Mỗi ngày chỉ được đổi một lần</Text>
+                  <Text style={styles.dialogRule}>• Không chứa ký tự nhạy cảm</Text>
+                  <Text style={styles.dialogRule}>• Tối đa 30 ký tự</Text>
+                </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Tên Hiển Thị</Text>
-                <TextInput
+                <GlassTextField
+                  label="Tên hiển thị"
+                  icon="id-card-outline"
                   value={displayName}
                   onChangeText={setDisplayName}
                   maxLength={30}
-                  style={styles.dialogInput}
                   placeholder="Nhập tên hiển thị"
-                  placeholderTextColor={colors.textMuted}
+                  containerStyle={{ marginTop: spacing.xs }}
                 />
-              </View>
 
-              <View style={styles.dialogActions}>
-                <Pressable
-                  style={({ pressed }) => [styles.dialogButton, pressed && styles.pressed]}
-                  onPress={() => setDisplayNameModalVisible(false)}
-                >
-                  <Text style={styles.dialogButtonText}>THAY ĐỔI</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.dialogButton, pressed && styles.pressed]}
-                  onPress={() => setDisplayNameModalVisible(false)}
-                >
-                  <Text style={styles.dialogButtonText}>HỦY</Text>
-                </Pressable>
+                <View style={styles.dialogActions}>
+                  <GradientButton
+                    label="Xác nhận"
+                    onPress={() => setDisplayNameModalVisible(false)}
+                    size="md"
+                    style={{ flex: 1 }}
+                  />
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.cancelBtn,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => setDisplayNameModalVisible(false)}
+                  >
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
+            </GlassCard>
           </View>
-        </Modal>
-      </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
-const PANEL_WIDTH = 300;
+const PANEL_WIDTH = 320;
+
+function motion_base() {
+  return 280;
+}
 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     flexDirection: 'row',
   },
-  backdrop: {
+  backdropTouch: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   panel: {
     position: 'absolute',
@@ -302,29 +392,90 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: PANEL_WIDTH,
-    backgroundColor: colors.surface,
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
+    backgroundColor: colors.backgroundElevated,
+    overflow: 'hidden',
+    borderTopRightRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+  },
+  glowA: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: colors.accent,
+    opacity: 0.22,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 80,
+  },
+  glowB: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: colors.cyan,
+    opacity: 0.12,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.5,
+    shadowRadius: 60,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+  },
+  avatarWrap: {
+    shadowColor: colors.accent,
+    shadowOpacity: 0.55,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  avatarBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 3,
+  },
+  avatarInner: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.backgroundElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
+    fontSize: 17,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  headerSubtitle: {
+    color: colors.cyan,
+    fontSize: 12,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
+    marginTop: 2,
   },
   closeButton: {
     width: 36,
     height: 36,
-    borderRadius: radius.sm,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.glassLight,
   },
   scroll: {
     flex: 1,
@@ -332,54 +483,84 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+    marginLeft: 4,
+  },
+  navCard: {
+    paddingVertical: spacing.xs,
+    borderRadius: radius.lg,
+  },
+  navDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.glassBorder,
+    marginLeft: 44,
   },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
   },
   menuRowIndented: {
-    paddingLeft: spacing.sm,
+    paddingLeft: spacing.lg,
+  },
+  menuIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontFamily: typography.fontFamilyMedium,
+    fontWeight: '600',
+  },
+  menuBadge: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  menuBadgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
   },
   accountFeatures: {
-    marginHorizontal: -spacing.lg,
+    padding: spacing.xs,
+    borderRadius: radius.lg,
   },
   accountFeaturesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  accountFeaturesHeaderExpanded: {
-    backgroundColor: '#4A2C28',
+    paddingHorizontal: spacing.md,
   },
   accountFeaturesTitle: {
     flex: 1,
     color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
   },
   accountFeaturesBody: {
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xs,
-  },
-  menuLabel: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  chevron: {
-    marginLeft: 'auto',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.xs,
   },
   pressed: {
     opacity: 0.7,
@@ -390,85 +571,60 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.md,
   },
-  dialogBackdrop: {
+  dialogBackdropTouch: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
-  dialogPanel: {
+  dialogPanelWrap: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
   },
   dialogHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   dialogTitle: {
     color: colors.textPrimary,
-    fontSize: 38 / 2,
-    fontWeight: '700',
+    fontSize: 17,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
   },
   dialogCloseButton: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.glassLight,
+  },
+  ruleList: {
+    gap: 6,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
   dialogRule: {
     color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 23,
-    marginBottom: spacing.xs,
-  },
-  inputGroup: {
-    marginTop: spacing.sm,
-  },
-  inputLabel: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-  },
-  dialogInput: {
-    height: 48,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-    paddingHorizontal: spacing.md,
+    fontSize: 12,
+    fontFamily: typography.fontFamilyPlatform as string,
+    lineHeight: 18,
   },
   dialogActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
-  dialogButton: {
-    minWidth: 98,
-    height: 48,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+  cancelBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
+    borderRadius: radius.lg,
+    backgroundColor: colors.glassLight,
   },
-  dialogButtonText: {
+  cancelBtnText: {
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
     fontWeight: '700',
-    letterSpacing: 0.4,
   },
 });

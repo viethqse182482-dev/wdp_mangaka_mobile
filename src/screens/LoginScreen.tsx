@@ -1,6 +1,9 @@
+/**
+ * LoginScreen — form đăng nhập.
+ */
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   AuthErrorBanner,
   AuthPrimaryButton,
@@ -10,7 +13,14 @@ import {
 import { ApiError } from '../services/apiClient';
 import { login } from '../services/authService';
 import { clearSeriesCache } from '../services/seriesService';
-import { colors, spacing } from '../theme/colors';
+import { colors, radius, spacing, typography } from '../theme/colors';
+
+const LOGIN_REQUIRED_PREFIXES = ['/story/', '/library', '/history', '/notifications'];
+
+function isLoginRequiredPath(path: string | undefined): boolean {
+  if (!path || typeof path !== 'string') return false;
+  return LOGIN_REQUIRED_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
 
 export function LoginScreen() {
   const router = useRouter();
@@ -19,6 +29,8 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = useCallback(async () => {
     const trimmedUsername = username.trim();
@@ -35,7 +47,7 @@ export function LoginScreen() {
       clearSeriesCache();
       const redirectPath =
         typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/';
-      router.replace(redirectPath);
+      router.replace(redirectPath as any);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Đăng nhập thất bại. Vui lòng thử lại.');
     } finally {
@@ -57,9 +69,11 @@ export function LoginScreen() {
       }
     >
       <AuthErrorBanner message={error} />
-      {typeof redirect === 'string' && redirect.startsWith('/story/') ? (
+      {isLoginRequiredPath(typeof redirect === 'string' ? redirect : undefined) ? (
         <View style={styles.noticeBanner}>
-          <Text style={styles.noticeText}>Vui lòng đăng nhập để đọc truyện.</Text>
+          <Text style={styles.noticeText}>
+            Bạn cần đăng nhập để tiếp tục sử dụng tính năng này.
+          </Text>
         </View>
       ) : null}
 
@@ -70,15 +84,30 @@ export function LoginScreen() {
         onChangeText={setUsername}
         autoCapitalize="none"
         autoCorrect={false}
+        autoComplete="username"
+        textContentType="username"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
+        editable={!loading}
+        accessibilityLabel="Tên đăng nhập"
+        accessibilityHint="Nhập tên đăng nhập hoặc email đã đăng ký"
         placeholder="Nhập tên đăng nhập"
       />
 
       <AuthTextField
+        ref={passwordRef}
         label="Mật khẩu"
         icon="lock-closed-outline"
         value={password}
         onChangeText={setPassword}
         isPassword
+        autoComplete="password"
+        textContentType="password"
+        returnKeyType="go"
+        onSubmitEditing={handleLogin}
+        editable={!loading}
+        accessibilityLabel="Mật khẩu"
+        accessibilityHint="Nhập mật khẩu của bạn"
         placeholder="Nhập mật khẩu"
       />
 
@@ -95,22 +124,23 @@ const styles = StyleSheet.create({
   footerText: {
     color: colors.textSecondary,
     fontSize: 14,
+    fontFamily: typography.fontFamilyMedium,
   },
   footerHighlight: {
-    color: colors.accent,
-    fontWeight: '700',
+    color: colors.accentLight,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '800',
   },
   noticeBanner: {
     backgroundColor: colors.accentSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.35)',
-    borderRadius: 10,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
   noticeText: {
-    color: colors.accent,
+    color: colors.accentLight,
     fontSize: 13,
+    fontFamily: typography.fontFamilyMedium,
     fontWeight: '600',
     textAlign: 'center',
   },

@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { apiDelete, apiGet, apiPost } from './apiClient';
 import { getAuthToken } from './authService';
 
@@ -11,6 +10,7 @@ export interface Comment {
   content: string;
   createdAt: string;
   replyTo?: string;
+  readerId?: string;
 }
 
 interface BeComment {
@@ -28,6 +28,15 @@ interface BeComment {
   created_at?: string;
   reply_to?: string;
   replyTo?: string;
+  reader_id?: {
+    _id?: string;
+    id?: string;
+    username?: string;
+    full_name?: string;
+    fullName?: string;
+    avatar_url?: string;
+    avatarUrl?: string;
+  } | string;
 }
 
 interface BeCommentsResponse {
@@ -47,15 +56,18 @@ interface BeSubmitCommentResponse {
 }
 
 function mapBeCommentToComment(be: BeComment): Comment {
+  const reader = typeof be.reader_id === 'object' && be.reader_id !== null ? be.reader_id : null;
+  const readerId = reader ? String(reader._id ?? reader.id ?? '') : be.reader_id ? String(be.reader_id) : undefined;
   return {
     id: be._id ?? be.id ?? '',
-    username: be.user?.username ?? be.username ?? 'Người dùng',
+    username: be.user?.username ?? be.username ?? reader?.username ?? 'Người dùng',
     badge: be.badge ?? 'Độc giả',
     badgeColor: be.badge_color ?? be.badgeColor ?? '#6366F1',
     chapterNumber: be.chapter_number ?? be.chapterNumber ?? 1,
     content: be.content ?? '',
     createdAt: be.createdAt ?? be.created_at ?? new Date().toISOString(),
     replyTo: be.reply_to ?? be.replyTo,
+    readerId: readerId || undefined,
   };
 }
 
