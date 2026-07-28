@@ -10,6 +10,7 @@ import React, {
   useState,
 } from 'react';
 import { Platform } from 'react-native';
+import { subscribeAuthEvent } from '../services/authEvents';
 import {
   deleteNotification,
   fetchNotifications,
@@ -46,6 +47,10 @@ interface NotificationContextValue {
 
   // Helper local push (dùng cho cả socket-triggered lẫn manual)
   triggerLocalNotification: (n: NotificationItem) => Promise<void>;
+
+  // Xóa toàn bộ state trong bộ nhớ + local system tray notification.
+  // Được gọi khi user logout để tránh rò rỉ state.
+  reset: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextValue>(null as any);
@@ -248,6 +253,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     [notifications],
   );
 
+  // Xóa sạch notification state — dùng khi logout. Các notification tray
+  // local trên Android/iOS cũng được dismiss để user khác không còn thấy
+  // chúng trên notification center sau khi đăng nhập tài khoản khác.
+  const reset = useCallback(async () => {
+    setNotifications([]);
+    setUnreadCount(0);
+    setPage(1);
+    setHasMore(true);
+    setError(null);
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+    } catch {
+      // ignore — không chặn UX khi dismiss fail
+    }
+  }, []);
+
   const value = useMemo<NotificationContextValue>(
     () => ({
       notifications,
@@ -262,6 +283,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       removeNotification,
       prependNotification,
       triggerLocalNotification,
+      reset,
     }),
     [
       notifications,
@@ -276,8 +298,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       removeNotification,
       prependNotification,
       triggerLocalNotification,
+      reset,
     ],
   );
+
+  // Nghe auth events để reset khi logout và refresh khi login.
+  useEffect(() => {
+    const unsub = subscribeAuthEvent((ev) => {
+      if (ev.type === 'logout') {
+        void reset();
+      } else if (ev.type === 'login') {
+        // Kéo lại danh sách + unread count ngay sau khi có token mới,
+        // tránh tình trạng badge = 0 cho tới khi user mở tab Thông báo.
+        void refresh();
+      }
+    });
+    return unsub;
+  }, [reset, refresh]);
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 };

@@ -21,6 +21,7 @@ import {
 } from '../components/auth/AuthForm';
 import { ApiError } from '../services/apiClient';
 import { login, register } from '../services/authService';
+import { emitAuthEvent } from '../services/authEvents';
 import { colors, spacing, typography } from '../theme/colors';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -154,7 +155,8 @@ export function RegisterScreen() {
           text: 'Đăng nhập',
           onPress: async () => {
             try {
-              await login(username.trim(), password);
+              const response = await login(username.trim(), password);
+              emitAuthEvent({ type: 'login', token: response.token });
               router.replace('/');
             } catch (loginErr) {
               const msg =

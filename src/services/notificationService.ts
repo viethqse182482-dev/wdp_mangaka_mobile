@@ -56,7 +56,21 @@ export interface NotificationItem {
     chapter_number?: number;
     author_id?: string;
   };
-  created_at: string;
+  /**
+   * Thời điểm tạo (BE Mongo timestamps).
+   * BE trả field `createdAt` (camelCase) ở cả REST `/notifications` lẫn socket emit.
+   * Một số payload cũ có thể gửi `created_at` — giữ fallback trong helper.
+   */
+  createdAt?: string;
+  created_at?: string;
+}
+
+/**
+ * Lấy thời gian tạo notification từ payload, fallback giữa createdAt (BE hiện tại)
+ * và created_at (payload cũ hoặc nguồn snake_case khác). Trả về "" nếu không có.
+ */
+export function getNotificationTime(item: NotificationItem): string {
+  return item.createdAt || item.created_at || '';
 }
 
 export interface NotificationListResponse {

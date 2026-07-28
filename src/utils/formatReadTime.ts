@@ -1,5 +1,8 @@
-export function formatReadTime(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime();
+export function formatReadTime(isoDate?: string | null): string {
+  if (!isoDate) return '';
+  const t = new Date(isoDate).getTime();
+  if (Number.isNaN(t)) return '';
+  const diffMs = Date.now() - t;
   const minutes = Math.floor(diffMs / 60_000);
 
   if (minutes < 1) return 'Vừa xong';

@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
 import { clearAuthSession, getAuthToken } from '../services/authService';
+import { emitAuthEvent } from '../services/authEvents';
 import { BottomTabKey } from '../types/story';
 
 const TAB_REDIRECT: Partial<Record<BottomTabKey, string>> = {
@@ -121,6 +122,10 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
     console.log('[Navigation] Menu tài khoản:', key);
     if (key === 'logout') {
       void clearAuthSession();
+      // Phát tín hiệu để NotificationContext reset state + dismissAll tray,
+      // và SocketContext disconnect. Phát TRƯỚC khi navigate để cleanup
+      // chạy đồng thời với chuyển trang, không chặn UI.
+      emitAuthEvent({ type: 'logout' });
       setAccountDrawerVisible(false);
       router.replace('/login');
     }

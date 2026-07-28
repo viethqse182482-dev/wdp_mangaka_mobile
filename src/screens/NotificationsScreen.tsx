@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNotification } from '../context/NotificationContext';
 import { useStoryNavigation } from '../hooks/useStoryNavigation';
-import { NotificationItem } from '../services/notificationService';
+import { NotificationItem, getNotificationTime } from '../services/notificationService';
 import { colors, radius, spacing, typography } from '../theme/colors';
 import { GlassCard, GlassIconButton, GlassListItem, GlassPill, Tag } from '../theme/uiPrimitives';
 import { formatReadTime } from '../utils/formatReadTime';
@@ -244,7 +244,7 @@ function NotificationRow({ item, onPress, onLongPress }: NotificationRowProps) {
             {item.message}
           </Text>
           <View style={styles.metaRow}>
-            <Text style={styles.rowTime}>{formatReadTime(item.created_at)}</Text>
+            <Text style={styles.rowTime}>{formatReadTime(getNotificationTime(item))}</Text>
             <Tag label={getTypeLabel(item.type)} variant="default" size="sm" />
           </View>
         </View>

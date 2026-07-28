@@ -12,6 +12,7 @@ import {
 } from '../components/auth/AuthForm';
 import { ApiError } from '../services/apiClient';
 import { login } from '../services/authService';
+import { emitAuthEvent } from '../services/authEvents';
 import { clearSeriesCache } from '../services/seriesService';
 import { colors, radius, spacing, typography } from '../theme/colors';
 
@@ -43,7 +44,8 @@ export function LoginScreen() {
     setError('');
 
     try {
-      await login(trimmedUsername, password);
+      const response = await login(trimmedUsername, password);
+      emitAuthEvent({ type: 'login', token: response.token });
       clearSeriesCache();
       const redirectPath =
         typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/';
