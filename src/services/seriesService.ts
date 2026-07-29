@@ -32,6 +32,22 @@ interface BeChapterStub {
   published_at?: string;
 }
 
+type BeSeriesWorkflowStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'approved_by_EB'
+  | 'rejected'
+  | 'published'
+  | 'cancelled';
+
+type BeSeriesPublicationStatus =
+  | 'upcoming'
+  | 'ongoing'
+  | 'hiatus'
+  | 'completed'
+  | 'dropped';
+
 interface BeSeries {
   _id: string;
   name: string;
@@ -39,7 +55,18 @@ interface BeSeries {
   synopsis?: string;
   cover_image_url?: string;
   genre?: string[];
-  status?: string;
+  /**
+   * Trạng thái workflow kiểm duyệt của Series (draft / submitted / approved /
+   * approved_by_EB / rejected / published / cancelled). Reader API chỉ trả
+   * series đã `published`, nên trường này không phù hợp để hiển thị cho reader.
+   */
+  status?: BeSeriesWorkflowStatus;
+  /**
+   * Trạng thái phát hành nội dung của Series (upcoming / ongoing / hiatus /
+   * completed / dropped). Đây là trường dùng để hiển thị "TRẠNG THÁI" trên
+   * StoryDetailScreen.
+   */
+  publication_status?: BeSeriesPublicationStatus | null;
   average_score?: number;
   total_votes?: number;
   views_count?: number;
@@ -202,6 +229,30 @@ function relativeTimeFromIso(iso?: string | null): string {
   if (diff < dayMs) return `${Math.floor(diff / hourMs)} giờ trước`;
   if (diff < 30 * dayMs) return `${Math.floor(diff / dayMs)} ngày trước`;
   return d.toLocaleDateString('vi-VN');
+}
+
+/**
+ * Chuyển `Series.publication_status` từ backend sang nhãn tiếng Việt để hiển thị
+ * trên trang chi tiết truyện. Enum lấy từ `models/Series.js`:
+ *   upcoming | ongoing | hiatus | completed | dropped | null
+ */
+function formatPublicationStatus(
+  status?: BeSeriesPublicationStatus | null,
+): string {
+  switch (status) {
+    case 'upcoming':
+      return 'Sắp ra mắt';
+    case 'ongoing':
+      return 'Đang tiến hành';
+    case 'hiatus':
+      return 'Tạm ngưng';
+    case 'completed':
+      return 'Đã hoàn thành';
+    case 'dropped':
+      return 'Đã ngừng';
+    default:
+      return 'Đang cập nhật';
+  }
 }
 
 function mapBeSeriesToStory(series: BeSeries): Story {
@@ -423,7 +474,7 @@ export async function fetchStoryDetail(id: string): Promise<StoryDetail | null> 
           : typeof series.author_id === 'string'
           ? series.author_id
           : undefined,
-      status: 'Đang cập nhật',
+      status: formatPublicationStatus(series.publication_status),
       synopsis: series.synopsis ?? series.description ?? 'Chưa có mô tả.',
       rating: Number((series.average_score ?? 0).toFixed(1)),
       ratingCount: series.total_votes ?? 0,
