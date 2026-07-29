@@ -34,8 +34,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
   // Được gọi khi socket vừa connect và khi user login lại.
   const joinUserRoom = async (socket: Socket) => {
     const user = await getAuthUser();
+    console.log('[SOCKET] joinUserRoom called, userId:', user?.userId, 'socket.connected:', socket.connected);
     if (user?.userId && socket.connected) {
       socket.emit('join_user_room', user.userId);
+      console.log('[SOCKET] ✅ join_user_room emitted with userId:', user.userId);
     }
   };
 
@@ -43,6 +45,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
   // connected thì không tạo lại.
   const connectSocket = async () => {
     const token = await getAuthToken();
+    console.log('[SOCKET] connectSocket called, hasToken:', !!token);
     if (!token) {
       // Không có token → đảm bảo socket cũ (nếu còn) bị đóng.
       if (socketRef.current) {
@@ -55,6 +58,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
 
     // Tránh tạo mới khi socket hiện tại đang connected với cùng token.
     if (socketRef.current?.connected) {
+      console.log('[SOCKET] Already connected, skipping');
       return;
     }
 
@@ -64,6 +68,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
       socketRef.current = null;
       setConnected(false);
     }
+
+    console.log('[SOCKET] 🔧 Creating new socket connection to:', SOCKET_URL);
 
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket'],
@@ -75,19 +81,29 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
     });
 
     newSocket.on('connect', () => {
+      console.log('[SOCKET] ✅ Connected successfully');
+      console.log('[SOCKET] Socket ID:', newSocket.id);
+      console.log('[SOCKET] Transport:', newSocket.io.engine.transport.name);
       setConnected(true);
-      // Join user room sau khi connect thành công để nhận notification cá nhân
       void joinUserRoom(newSocket);
     });
-    newSocket.on('disconnect', () => setConnected(false));
-    newSocket.on('connect_error', () => setConnected(false));
+    newSocket.on('disconnect', (reason) => {
+      console.log('[SOCKET] 🔌 Disconnected:', reason);
+      setConnected(false);
+    });
+    newSocket.on('connect_error', (error) => {
+      console.log('[SOCKET] ❌ Connection error:', error.message);
+      console.log('[SOCKET] Error code:', error.code);
+      setConnected(false);
+    });
 
     // Server BE phát: sendToUser(req.user.nameid, "notification", notif)
     newSocket.on('notification', (notif: any) => {
+      console.log('[SOCKET] 📩 Received notification:', JSON.stringify(notif));
       try {
         onNotification?.(notif);
-      } catch {
-        // never break the socket
+      } catch (err) {
+        console.log('[SOCKET] ❌ Notification handler error:', err);
       }
     });
 
@@ -119,12 +135,14 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
   useEffect(() => {
     const unsub = subscribeAuthEvent((ev) => {
       if (ev.type === 'logout') {
+        console.log('[SOCKET] 🔓 Logout event received, disconnecting socket');
         if (socketRef.current) {
           socketRef.current.disconnect();
           socketRef.current = null;
         }
         setConnected(false);
       } else if (ev.type === 'login') {
+        console.log('[SOCKET] 🔐 Login event received, connecting socket');
         void connectSocket();
         // Nếu socket đã connected (không tạo mới), vẫn cần join room
         if (socketRef.current?.connected) {

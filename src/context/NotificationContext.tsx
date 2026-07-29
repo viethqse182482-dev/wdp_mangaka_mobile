@@ -9,7 +9,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { subscribeAuthEvent } from '../services/authEvents';
 import {
   deleteNotification,
@@ -69,6 +69,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [permissionGranted, setPermissionGranted] = useState(false);
 
   const responseListener = useRef<any>(null);
+
+  // ── Polling state — dùng cho cơ chế tự động check unread count ─────────
+  // Track count cũ để so sánh → chỉ refresh full list khi thực sự thay đổi.
+  // Lưu interval id để start/stop theo AppState foreground/background.
+  const lastUnreadCountRef = useRef<number>(0);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Xin quyền notification 1 lần khi mount ─────────────────────────────
   useEffect(() => {
@@ -315,6 +321,73 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
     return unsub;
   }, [reset, refresh]);
+
+  // ── Polling: tự động check unread count mỗi 30s khi app foreground ──────
+  // Mục đích: bắt các notification bị miss do socket race condition / socket
+  // disconnect khi background. So sánh unread count với lần trước — chỉ
+  // refresh full list khi count thực sự đổi, tránh tốn request thừa.
+  // Dừng polling khi app vào background (AppState khác 'active') để tiết
+  // kiệm pin + không tốn request vô ích.
+  useEffect(() => {
+    const POLLING_INTERVAL_MS = 30_000;
+
+    const stopPolling = () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+        console.log('[NOTIF] ⏸ Polling stopped (background)');
+      }
+    };
+
+    const pollOnce = async () => {
+      try {
+        const countRes = await fetchUnreadCount();
+        const newCount = countRes.count ?? 0;
+        const oldCount = lastUnreadCountRef.current;
+
+        if (newCount !== oldCount) {
+          console.log(`[NOTIF] 📊 Unread count changed: ${oldCount} → ${newCount}`);
+          await refresh();
+          lastUnreadCountRef.current = newCount;
+        }
+      } catch (err) {
+        // UNAUTHENTICATED → user đã logout → dừng polling cho tới khi login lại
+        if (err === 'UNAUTHENTICATED') {
+          stopPolling();
+        }
+        // Lỗi khác (mạng, 500...) → im lặng, polling lần sau vẫn chạy
+      }
+    };
+
+    const startPolling = () => {
+      if (pollingIntervalRef.current) return;
+      console.log('[NOTIF] ▶ Polling started (foreground, every 30s)');
+      // Tick ngay 1 lần khi vào foreground để đồng bộ state
+      void pollOnce();
+      pollingIntervalRef.current = setInterval(() => {
+        void pollOnce();
+      }, POLLING_INTERVAL_MS);
+    };
+
+    // Lắng nghe foreground/background
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    });
+
+    // Nếu app đã ở foreground ngay từ khi mount → start ngay
+    if (AppState.currentState === 'active') {
+      startPolling();
+    }
+
+    return () => {
+      stopPolling();
+      sub.remove();
+    };
+  }, [refresh]);
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 };
