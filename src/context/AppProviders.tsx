@@ -10,9 +10,14 @@ import { SocketProvider } from './SocketContext';
  * truyền callback xuống.
  */
 const SocketBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { prependNotification } = useNotification();
+  const { prependNotification, refresh } = useNotification();
   return (
-    <SocketProvider onNotification={prependNotification}>{children}</SocketProvider>
+    <SocketProvider
+      onNotification={prependNotification}
+      onUserRoomJoined={refresh}
+    >
+      {children}
+    </SocketProvider>
   );
 };
 

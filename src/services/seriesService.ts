@@ -108,6 +108,9 @@ interface BeChapterListItem {
   views_count?: number;
   views?: number;
   cover_image_url?: string;
+  access_type?: 'FREE' | 'PAID';
+  coin_price?: number;
+  is_purchased?: boolean;
 }
 
 interface BeChapterListResponse {
@@ -292,6 +295,9 @@ function mapBeChapterToChapterItem(chapter: BeChapterListItem) {
     releasedAt: relativeTimeFromIso(chapter.published_at),
     views: chapter.views_count ?? chapter.views ?? 0,
     coverUrl: chapter.cover_image_url || undefined,
+    accessType: chapter.access_type ?? 'FREE',
+    coinPrice: chapter.coin_price ?? 0,
+    isPurchased: chapter.is_purchased ?? false,
   };
 }
 

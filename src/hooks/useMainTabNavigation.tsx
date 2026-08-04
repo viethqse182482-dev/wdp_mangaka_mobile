@@ -83,6 +83,12 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
   );
 
   const handleAccountMenuPress = useCallback((key: string) => {
+    if (key === 'wallet') {
+      setAccountDrawerVisible(false);
+      router.push('/wallet' as never);
+      return;
+    }
+
     if (key === 'login') {
       setAccountDrawerVisible(false);
       router.push('/login');

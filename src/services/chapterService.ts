@@ -13,6 +13,34 @@ export interface ChapterDetail {
   pages: ChapterPage[];
 }
 
+export interface ChapterAccess {
+  accessType: 'FREE' | 'PAID';
+  isUnlocked: boolean;
+  needsPurchase: boolean;
+  /** Giá theo CoinUnit (100 CoinUnit = 1 Coin). */
+  coinPrice: number;
+  purchasedAt?: string | null;
+}
+
+interface ChapterAccessResponse {
+  success: boolean;
+  data: {
+    access_type: 'FREE' | 'PAID';
+    is_unlocked: boolean;
+    needs_purchase: boolean;
+    coin_price: number;
+    purchased_at?: string | null;
+  };
+}
+
+interface PurchaseChapterResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    already_owned: boolean;
+  };
+}
+
 interface MangaDexChapterResponse {
   result: string;
   baseUrl?: string;
@@ -103,6 +131,42 @@ export async function fetchChapterPages(
     storyId,
     chapterNumber,
     pages,
+  };
+}
+
+export async function fetchChapterAccess(chapterId: string): Promise<ChapterAccess> {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Vui lòng đăng nhập để đọc chapter này.');
+
+  const response = await apiGet<ChapterAccessResponse>(
+    `/chapters/${encodeURIComponent(chapterId)}/access`,
+    { token },
+  );
+
+  return {
+    accessType: response.data.access_type,
+    isUnlocked: response.data.is_unlocked,
+    needsPurchase: response.data.needs_purchase,
+    coinPrice: response.data.coin_price ?? 0,
+    purchasedAt: response.data.purchased_at,
+  };
+}
+
+export async function purchaseChapter(
+  chapterId: string,
+): Promise<{ alreadyOwned: boolean; message: string }> {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Vui lòng đăng nhập để mua chapter này.');
+
+  const response = await apiPost<PurchaseChapterResponse>(
+    `/chapters/${encodeURIComponent(chapterId)}/purchase`,
+    {},
+    { token },
+  );
+
+  return {
+    alreadyOwned: response.data.already_owned,
+    message: response.message ?? 'Mua chapter thành công.',
   };
 }
 

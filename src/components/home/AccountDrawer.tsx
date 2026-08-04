@@ -38,6 +38,7 @@ interface MenuItem {
 }
 
 const ACCOUNT_FEATURE_ITEMS: MenuItem[] = [
+  { key: 'wallet', label: 'Ví & nạp Coin', icon: 'wallet-outline', showChevron: true },
   { key: 'change-display-name', label: 'Đổi tên hiển thị', icon: 'create-outline' },
 ];
 

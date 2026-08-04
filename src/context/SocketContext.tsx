@@ -24,9 +24,15 @@ interface SocketProviderProps {
    * trigger local notification trên Android.
    */
   onNotification?: (notif: any) => void;
+  /** Called after the server confirms that this socket joined the user's room. */
+  onUserRoomJoined?: () => void;
 }
 
-export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNotification }) => {
+export const SocketProvider: React.FC<SocketProviderProps> = ({
+  children,
+  onNotification,
+  onUserRoomJoined,
+}) => {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -36,7 +42,20 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
     const user = await getAuthUser();
     console.log('[SOCKET] joinUserRoom called, userId:', user?.userId, 'socket.connected:', socket.connected);
     if (user?.userId && socket.connected) {
-      socket.emit('join_user_room', user.userId);
+      socket.timeout(5000).emit(
+        'join_user_room',
+        user.userId,
+        (error: Error | null, response?: { success?: boolean; message?: string }) => {
+          if (error) {
+            console.log('[SOCKET] join_user_room acknowledgement timeout:', error.message);
+            return;
+          }
+          if (response?.success) {
+            console.log('[SOCKET] ✅ user room joined and acknowledged');
+            onUserRoomJoined?.();
+          }
+        },
+      );
       console.log('[SOCKET] ✅ join_user_room emitted with userId:', user.userId);
     }
   };
@@ -93,7 +112,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, onNoti
     });
     newSocket.on('connect_error', (error) => {
       console.log('[SOCKET] ❌ Connection error:', error.message);
-      console.log('[SOCKET] Error code:', error.code);
+      if ('code' in error) {
+        console.log('[SOCKET] Error code:', error.code);
+      }
       setConnected(false);
     });
 

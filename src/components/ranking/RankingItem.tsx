@@ -111,7 +111,7 @@ export function RankingItem({ item, rankingType, onPress }: RankingItemProps) {
 
 function RankBadge({ rank }: { rank: number }) {
   let gradient: readonly [string, string, ...string[]];
-  let shadowColor = colors.accent;
+  let shadowColor: string = colors.accent;
   if (rank === 1) {
     gradient = ['#FFD56B', '#FF9A3D'];
     shadowColor = colors.warning;

@@ -10,6 +10,7 @@ import { Chapter } from '../../types/storyDetail';
 import { formatCompactNumber } from '../../utils/formatNumber';
 import { colors, radius, spacing, typography } from '../../theme/colors';
 import { GlassCard } from '../../theme/uiPrimitives';
+import { ChapterAccessBadge } from './ChapterAccessBadge';
 
 interface ChapterListProps {
   chapters: Chapter[];
@@ -133,11 +134,14 @@ function ChapterRow({
         </Text>
       </View>
 
-      <View style={styles.views}>
-        <Ionicons name="eye-outline" size={13} color={colors.textMuted} />
-        <Text style={styles.viewsText}>
-          {formatCompactNumber(chapter.views)}
-        </Text>
+      <View style={styles.chapterMeta}>
+        <ChapterAccessBadge chapter={chapter} />
+        <View style={styles.views}>
+          <Ionicons name="eye-outline" size={13} color={colors.textMuted} />
+          <Text style={styles.viewsText}>
+            {formatCompactNumber(chapter.views)}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -232,6 +236,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  chapterMeta: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
   },
   viewsText: {
     color: colors.textMuted,

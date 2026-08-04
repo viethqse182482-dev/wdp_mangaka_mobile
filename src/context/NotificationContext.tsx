@@ -14,7 +14,6 @@ import { subscribeAuthEvent } from '../services/authEvents';
 import {
   deleteNotification,
   fetchNotifications,
-  fetchUnreadCount,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   NotificationItem,
@@ -182,14 +181,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setLoading(true);
     setError(null);
     try {
-      const [listRes, countRes] = await Promise.all([
-        fetchNotifications(1, PAGE_SIZE),
-        fetchUnreadCount(),
-      ]);
+      const listRes = await fetchNotifications(1, PAGE_SIZE);
       setNotifications(listRes.data ?? []);
       setPage(1);
       setHasMore((listRes.data ?? []).length >= PAGE_SIZE);
-      setUnreadCount(countRes.count ?? 0);
+      const nextUnreadCount = listRes.unreadCount ?? 0;
+      setUnreadCount(nextUnreadCount);
+      lastUnreadCountRef.current = nextUnreadCount;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg === 'UNAUTHENTICATED') {
@@ -210,7 +208,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const next = page + 1;
       const listRes = await fetchNotifications(next, PAGE_SIZE);
       const items = listRes.data ?? [];
-      setNotifications((prev) => [...prev, ...items]);
+      setNotifications((prev) => {
+        const existingIds = new Set(prev.map((item) => item._id));
+        return [...prev, ...items.filter((item) => !existingIds.has(item._id))];
+      });
       setPage(next);
       setHasMore(items.length >= PAGE_SIZE);
     } catch {
@@ -322,6 +323,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return unsub;
   }, [reset, refresh]);
 
+  // Cold start có session cũ sẽ không phát auth event "login". Luôn thử
+  // hydrate inbox khi provider mount; refresh tự reset state nếu chưa authenticated.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   // ── Polling: tự động check unread count mỗi 30s khi app foreground ──────
   // Mục đích: bắt các notification bị miss do socket race condition / socket
   // disconnect khi background. So sánh unread count với lần trước — chỉ
@@ -341,8 +348,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const pollOnce = async () => {
       try {
-        const countRes = await fetchUnreadCount();
-        const newCount = countRes.count ?? 0;
+        const listRes = await fetchNotifications(1, 1);
+        const newCount = listRes.unreadCount ?? 0;
         const oldCount = lastUnreadCountRef.current;
 
         if (newCount !== oldCount) {
@@ -352,7 +359,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       } catch (err) {
         // UNAUTHENTICATED → user đã logout → dừng polling cho tới khi login lại
-        if (err === 'UNAUTHENTICATED') {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === 'UNAUTHENTICATED') {
           stopPolling();
         }
         // Lỗi khác (mạng, 500...) → im lặng, polling lần sau vẫn chạy

@@ -169,6 +169,18 @@ export default function RootLayout() {
               gestureEnabled: true,
             }}
           />
+          <Stack.Screen
+            name="payment/checkout"
+            options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="payment/return"
+            options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}
+          />
+          <Stack.Screen
+            name="payment/cancel"
+            options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}
+          />
         </Stack>
       </AppProviders>
     </SafeAreaProvider>

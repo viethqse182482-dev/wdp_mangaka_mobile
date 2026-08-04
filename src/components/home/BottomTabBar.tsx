@@ -34,7 +34,7 @@ const TABS: TabItem[] = [
   { key: 'home', label: 'Trang chủ', icon: 'home-outline', activeIcon: 'home' },
   { key: 'ranking', label: 'BXH', icon: 'trophy-outline', activeIcon: 'trophy' },
   { key: 'genres', label: 'Thể loại', icon: 'grid-outline', activeIcon: 'grid' },
-  { key: 'library', label: 'Tủ sách', icon: 'book-outline', activeIcon: 'book' },
+  { key: 'library', label: 'Tủ truyện', icon: 'book-outline', activeIcon: 'book' },
   { key: 'profile', label: 'Cá nhân', icon: 'person-outline', activeIcon: 'person' },
 ];
 

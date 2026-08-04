@@ -76,6 +76,7 @@ export function getNotificationTime(item: NotificationItem): string {
 export interface NotificationListResponse {
   success: boolean;
   data: NotificationItem[];
+  unreadCount: number;
   pagination: {
     total: number;
     page: number;
@@ -179,7 +180,7 @@ export async function fetchNotifications(
     params: {
       page,
       limit,
-      unreadOnly: opts.unreadOnly ? 'true' : undefined,
+      is_read: opts.unreadOnly ? 'false' : undefined,
       type: opts.type,
     },
   });

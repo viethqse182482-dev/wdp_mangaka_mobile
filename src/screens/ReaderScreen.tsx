@@ -10,6 +10,7 @@ import {
   FlatList,
   Image,
   ListRenderItem,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -21,7 +22,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chapter, StoryDetail } from '../types/storyDetail';
-import { fetchChapterPages, trackChapterView, ChapterDetail } from '../services/chapterService';
+import {
+  fetchChapterAccess,
+  fetchChapterPages,
+  purchaseChapter,
+  trackChapterView,
+  ChapterDetail,
+} from '../services/chapterService';
 import { ApiError } from '../services/apiClient';
 import {
   bumpChapterViewInCache,
@@ -30,6 +37,7 @@ import {
 import { recordReadingHistory } from '../services/readingHistoryService';
 import { getAuthToken } from '../services/authService';
 import { Story } from '../types/story';
+import { formatCoinUnits } from '../utils/coinUnit';
 import { colors, radius, spacing, typography } from '../theme/colors';
 import { GlassCard, GlassIconButton, GlassListItem } from '../theme/uiPrimitives';
 
@@ -264,6 +272,103 @@ function ErrorState({
   );
 }
 
+interface PurchasePrompt {
+  chapterId: string;
+  chapterNumber: number;
+  coinPrice: number;
+}
+
+function PurchaseChapterModal({
+  prompt,
+  purchasing,
+  errorMessage,
+  onPurchase,
+  onCancel,
+  onTopUp,
+}: {
+  prompt: PurchasePrompt | null;
+  purchasing: boolean;
+  errorMessage: string | null;
+  onPurchase: () => void;
+  onCancel: () => void;
+  onTopUp: () => void;
+}) {
+  return (
+    <Modal
+      visible={prompt !== null}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={() => {
+        if (!purchasing) onCancel();
+      }}
+    >
+      <View style={purchaseStyles.backdrop}>
+        <View style={purchaseStyles.card}>
+          <View style={purchaseStyles.iconWrap}>
+            <Ionicons name="lock-closed" size={28} color={colors.warning} />
+          </View>
+          <Text style={purchaseStyles.title}>Mở khóa chương {prompt?.chapterNumber}</Text>
+          <Text style={purchaseStyles.description}>
+            Chương này có tính phí. Coin chỉ được trừ sau khi bạn xác nhận mua.
+          </Text>
+          <View style={purchaseStyles.priceRow}>
+            <Text style={purchaseStyles.priceLabel}>Giá mở khóa</Text>
+            <Text style={purchaseStyles.priceValue}>
+              {formatCoinUnits(prompt?.coinPrice ?? 0)} Coin
+            </Text>
+          </View>
+
+          {errorMessage ? (
+            <View style={purchaseStyles.errorBox}>
+              <Ionicons name="alert-circle" size={18} color={colors.danger} />
+              <Text style={purchaseStyles.errorMessage}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            disabled={purchasing}
+            onPress={onPurchase}
+            style={({ pressed }) => [
+              purchaseStyles.purchaseButton,
+              purchasing && purchaseStyles.buttonDisabled,
+              pressed && !purchasing && styles.pressed,
+            ]}
+          >
+            {purchasing ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Ionicons name="diamond-outline" size={19} color={colors.white} />
+            )}
+            <Text style={purchaseStyles.purchaseButtonText}>
+              {purchasing
+                ? 'Đang mua…'
+                : `Mua với ${formatCoinUnits(prompt?.coinPrice ?? 0)} Coin`}
+            </Text>
+          </Pressable>
+
+          <View style={purchaseStyles.secondaryRow}>
+            <Pressable
+              disabled={purchasing}
+              onPress={onCancel}
+              style={({ pressed }) => [purchaseStyles.secondaryButton, pressed && styles.pressed]}
+            >
+              <Text style={purchaseStyles.secondaryText}>Quay lại</Text>
+            </Pressable>
+            <Pressable
+              disabled={purchasing}
+              onPress={onTopUp}
+              style={({ pressed }) => [purchaseStyles.secondaryButton, pressed && styles.pressed]}
+            >
+              <Text style={purchaseStyles.topUpText}>Nạp Coin</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const CHAPTER_VIEW_THRESHOLD_MS = 15_000;
 
 export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
@@ -287,6 +392,9 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
   const [uiVisible, setUiVisible] = useState(true);
   const [showChapterList, setShowChapterList] = useState(false);
   const [storyDetail, setStoryDetail] = useState<StoryDetail | null>(null);
+  const [purchasePrompt, setPurchasePrompt] = useState<PurchasePrompt | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
   const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Monotonic counter để chống race condition khi người dùng bấm
@@ -327,6 +435,19 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
     const myToken = ++loadTokenRef.current;
 
     try {
+      const access = await fetchChapterAccess(capturedChapter.id);
+      if (loadTokenRef.current !== myToken) return;
+
+      if (access.needsPurchase) {
+        setPurchaseError(null);
+        setPurchasePrompt({
+          chapterId: capturedChapter.id,
+          chapterNumber: capturedChapter.number,
+          coinPrice: access.coinPrice,
+        });
+        return;
+      }
+
       const detail = await fetchChapterPages(
         effectiveStoryId,
         effectiveChapter,
@@ -350,6 +471,25 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
       }
     }
   }, [currentChapterData, effectiveStoryId, effectiveChapter]);
+
+  const handlePurchase = useCallback(async () => {
+    if (!purchasePrompt || purchasing) return;
+
+    const chapterId = purchasePrompt.chapterId;
+    setPurchasing(true);
+    setPurchaseError(null);
+    try {
+      await purchaseChapter(chapterId);
+      setPurchasePrompt(null);
+      await loadChapter();
+    } catch (err) {
+      setPurchaseError(
+        err instanceof Error ? err.message : 'Không thể mua chương. Vui lòng thử lại.',
+      );
+    } finally {
+      setPurchasing(false);
+    }
+  }, [purchasePrompt, purchasing, loadChapter]);
 
   useEffect(() => {
     void loadChapter();
@@ -625,6 +765,21 @@ export function ReaderScreen({ story, initialChapter }: ReaderScreenProps) {
         onSelect={handleChapterSelect}
         onClose={() => setShowChapterList(false)}
       />
+
+      <PurchaseChapterModal
+        prompt={purchasePrompt}
+        purchasing={purchasing}
+        errorMessage={purchaseError}
+        onPurchase={() => void handlePurchase()}
+        onCancel={() => {
+          if (!purchasing) router.back();
+        }}
+        onTopUp={() => {
+          if (purchasing) return;
+          setPurchasePrompt(null);
+          router.replace('/wallet');
+        }}
+      />
     </View>
   );
 }
@@ -792,6 +947,130 @@ const pageStyles = StyleSheet.create({
   },
   retryText: {
     color: colors.white,
+    fontSize: 14,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+  },
+});
+
+const purchaseStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    padding: spacing.xxl,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  iconWrap: {
+    width: 56,
+    height: 56,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.warningSoft,
+    marginBottom: spacing.md,
+  },
+  title: {
+    color: colors.textPrimary,
+    fontSize: 20,
+    textAlign: 'center',
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+  },
+  description: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    fontFamily: typography.fontFamilyRegular,
+    marginTop: spacing.sm,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.glassLight,
+    marginTop: spacing.lg,
+  },
+  priceLabel: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: typography.fontFamilyMedium,
+  },
+  priceValue: {
+    color: colors.warning,
+    fontSize: 17,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+    marginTop: spacing.md,
+  },
+  errorMessage: {
+    flex: 1,
+    color: colors.danger,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: typography.fontFamilyMedium,
+  },
+  purchaseButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+  purchaseButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontFamily: typography.fontFamilyBold,
+    fontWeight: '700',
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.glassLight,
+  },
+  secondaryText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: typography.fontFamilyMedium,
+  },
+  topUpText: {
+    color: colors.accentLight,
     fontSize: 14,
     fontFamily: typography.fontFamilyBold,
     fontWeight: '700',

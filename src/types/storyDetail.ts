@@ -4,6 +4,44 @@ export interface Chapter {
   releasedAt: string;
   views: number;
   coverUrl?: string;
+  accessType?: 'FREE' | 'PAID';
+  /** Giá backend trả về theo CoinUnit (100 CoinUnit = 1 Coin). */
+  coinPrice?: number;
+  isPurchased?: boolean;
+}
+
+export interface PurchasedChapterSeries {
+  id: string;
+  name: string;
+  coverImageUrl?: string;
+}
+
+export interface PurchasedChapterEntry {
+  /** `_id` của bản ghi purchase, dùng để dedupe giữa các trang. */
+  id: string;
+  /** ID chương đã mua (BE trả `chapter_id._id`). */
+  chapterId: string;
+  /** Số thứ tự chương, dùng để sort và hiển thị. */
+  chapterNumber: number;
+  /** Tiêu đề chương (nếu có). */
+  chapterTitle?: string;
+  /** Series của chapter; có thể undefined khi BE trả object rỗng/series đã bị xoá. */
+  series?: PurchasedChapterSeries;
+  /** Giá theo CoinUnit (100 CoinUnit = 1 Coin). */
+  priceCoinUnit: number;
+  /** ISO timestamp lúc mua. */
+  purchasedAt: string;
+}
+
+export interface PurchasedChapterListResponse {
+  success: boolean;
+  data: PurchasedChapterEntry[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 export interface StoryComment {

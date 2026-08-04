@@ -28,6 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LoginRequiredModal } from '../components/auth/LoginRequiredModal';
 import { ChapterList } from '../components/story/ChapterList';
+import { ChapterAccessBadge } from '../components/story/ChapterAccessBadge';
 import { CommentSection } from '../components/story/CommentSection';
 import { ReadActionSheet } from '../components/story/ReadActionSheet';
 import { StoryActionBar } from '../components/story/StoryActionBar';
@@ -96,9 +97,12 @@ function ChapterPickerModal({
                 <Text style={pickerStyles.itemText} numberOfLines={1}>
                   Chương {chapter.number}
                 </Text>
-                <Text style={pickerStyles.itemMeta} numberOfLines={1}>
-                  {chapter.releasedAt}
-                </Text>
+                <View style={pickerStyles.itemMetaWrap}>
+                  <ChapterAccessBadge chapter={chapter} />
+                  <Text style={pickerStyles.itemMeta} numberOfLines={1}>
+                    {chapter.releasedAt}
+                  </Text>
+                </View>
               </Pressable>
             ))}
           </ScrollView>
@@ -172,6 +176,10 @@ const pickerStyles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     fontFamily: typography.fontFamilyMedium,
+  },
+  itemMetaWrap: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
   },
 });
 
