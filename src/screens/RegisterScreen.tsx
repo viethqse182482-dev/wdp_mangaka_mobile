@@ -156,7 +156,7 @@ export function RegisterScreen() {
           onPress: async () => {
             try {
               const response = await login(username.trim(), password);
-              emitAuthEvent({ type: 'login', token: response.token });
+              emitAuthEvent({ type: 'login', token: response.token, user: response.user });
               router.replace('/');
             } catch (loginErr) {
               const msg =

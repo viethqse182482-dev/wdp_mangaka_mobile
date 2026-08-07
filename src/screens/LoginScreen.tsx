@@ -14,6 +14,7 @@ import { ApiError } from '../services/apiClient';
 import { login } from '../services/authService';
 import { emitAuthEvent } from '../services/authEvents';
 import { clearSeriesCache } from '../services/seriesService';
+import { getRoleHome } from '../components/auth/RoleRouteGuard';
 import { colors, radius, spacing, typography } from '../theme/colors';
 
 const LOGIN_REQUIRED_PREFIXES = ['/story/', '/library', '/history', '/notifications'];
@@ -45,10 +46,13 @@ export function LoginScreen() {
 
     try {
       const response = await login(trimmedUsername, password);
-      emitAuthEvent({ type: 'login', token: response.token });
+      emitAuthEvent({ type: 'login', token: response.token, user: response.user });
       clearSeriesCache();
-      const redirectPath =
-        typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/';
+      const requestedRedirect =
+        typeof redirect === 'string' && redirect.startsWith('/') ? redirect : undefined;
+      const redirectPath = response.user.role === 'Reader'
+        ? requestedRedirect ?? '/'
+        : getRoleHome(response.user.role);
       router.replace(redirectPath as any);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Đăng nhập thất bại. Vui lòng thử lại.');

@@ -1,6 +1,7 @@
 import React from 'react';
 import { NotificationProvider, useNotification } from './NotificationContext';
 import { SocketProvider } from './SocketContext';
+import { AuthProvider } from './AuthContext';
 
 /**
  * Bridge giữa NotificationContext và SocketContext: SocketProvider cần callback
@@ -23,8 +24,10 @@ const SocketBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <NotificationProvider>
-      <SocketBridge>{children}</SocketBridge>
-    </NotificationProvider>
+    <AuthProvider>
+      <NotificationProvider>
+        <SocketBridge>{children}</SocketBridge>
+      </NotificationProvider>
+    </AuthProvider>
   );
 };

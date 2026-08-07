@@ -1,3 +1,5 @@
+export type UserRole = 'Reader' | 'Assistant' | 'Mangaka' | 'Admin';
+
 export interface AuthUser {
   userId: string;
   accountId: string;
@@ -5,7 +7,7 @@ export interface AuthUser {
   email: string;
   phoneNumber: string;
   fullName: string;
-  role: string;
+  role: UserRole;
   isProMember: boolean;
   avatarUrl: string;
   proExpiredAt: string | null;

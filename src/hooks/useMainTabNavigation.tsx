@@ -66,7 +66,7 @@ export function useMainTabNavigation(activeTab: BottomTabKey) {
       }
 
       if (tab === 'profile') {
-        setAccountDrawerVisible(true);
+        router.push('/profile' as never);
         return;
       }
 

@@ -10,8 +10,10 @@
  *  - subscribe trả về hàm unsubscribe.
  */
 
+import { AuthUser } from '../types/auth';
+
 export type AuthEvent =
-  | { type: 'login'; token: string }
+  | { type: 'login'; token: string; user?: AuthUser }
   | { type: 'logout' };
 
 type Listener = (event: AuthEvent) => void;

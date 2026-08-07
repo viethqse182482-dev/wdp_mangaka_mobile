@@ -8,6 +8,7 @@ import { Image, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StartupSplash } from '../src/components/splash/StartupSplash';
 import { AppProviders } from '../src/context/AppProviders';
+import { RoleRouteGuard } from '../src/components/auth/RoleRouteGuard';
 import { getAuthToken } from '../src/services/authService';
 import { fetchGenres } from '../src/services/genreService';
 import { colors } from '../src/theme/colors';
@@ -133,12 +134,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       <AppProviders>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
+        <RoleRouteGuard>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          >
           <Stack.Screen
             name="read/[storyId]/[chapter]"
             options={{
@@ -181,7 +183,8 @@ export default function RootLayout() {
             name="payment/cancel"
             options={{ headerShown: false, animation: 'fade', gestureEnabled: false }}
           />
-        </Stack>
+          </Stack>
+        </RoleRouteGuard>
       </AppProviders>
     </SafeAreaProvider>
   );
